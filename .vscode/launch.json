@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        
+    {
+        "type": "gdb",
+        "request": "attach",
+        "name": "Debug kernel",
+        "executable": "./build/kernel/kernel",
+        "target": ":1234",
+        "remote": true,
+        "cwd": "${workspaceRoot}",
+        "gdbpath": "x86_64-elf-gdb"
+    }
+    ]
+}

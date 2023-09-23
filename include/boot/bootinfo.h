@@ -1,5 +1,5 @@
-#ifndef BOOTINFO_H_INCL
-#define BOOTINFO_H_INCL
+#ifndef BOOT_BOOTINFO_H_INCL
+#define BOOT_BOOTINFO_H_INCL
 
 #include <stdint.h>
 

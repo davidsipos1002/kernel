@@ -1,5 +1,5 @@
-#ifndef CPUID_H_INCL
-#define CPUID_H_INCL
+#ifndef ASM_CPUID_H_INCL
+#define ASM_CPUID_H_INCL
 
 #include <stdint.h>
 

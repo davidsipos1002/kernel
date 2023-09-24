@@ -1,0 +1,3 @@
+Startup core code
+Efficient handling of the paging structures, lock only certain portions not the whole thing
+Memory type change requires special procedure to flush the TLBs of the cores

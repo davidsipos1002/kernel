@@ -13,7 +13,7 @@
 .align 16
 //stack grows downwards for x86
 __stack_end:
-.skip 1048576
+.skip 8388608
 __stack_begin:
 
 __kernel_data_begin:

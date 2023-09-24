@@ -8,3 +8,11 @@ void invlpg(void *p)
         : "r" ((uint64_t) p)
         : "memory");
 }
+
+void wbinvd()
+{
+    __asm__ __volatile__ ("wbinvd"
+        :
+        :
+        : "memory");
+}

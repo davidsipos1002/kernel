@@ -1,6 +1,8 @@
 #ifndef CPU_CONTROL_H_INCL
 #define CPU_CONTROL_H_INCL
 
+#include <stdint.h>
+
 #define PAGING_CR0_WP (1 << 16)
 #define PAGING_CR0_PG (1 << 31)
 #define PAGING_CR4_PAE (1 << 5)
@@ -23,5 +25,10 @@
 #define PAGING_PAT_WP 0x05
 #define PAGING_PAT_WB 0x06
 #define PAGING_PAT_UC_ 0x07
+
+void set_cr4_flag(uint64_t flag);
+void unset_cr4_flag(uint64_t flag);
+void set_ia32_efer_flag(uint64_t flag);
+void unset_ia32_efer_flag(uint64_t flag);
 
 #endif

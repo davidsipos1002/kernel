@@ -11,5 +11,6 @@
 #define IA32_EFER 0xC0000080
 #define IA32_MTRR_DEF_TYPE 0x2FF
 #define IA32_PAT 0x277
+#define IA32_PKRS 0x6E1
 
 #endif

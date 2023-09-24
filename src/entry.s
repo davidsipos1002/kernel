@@ -8,11 +8,17 @@
     The bootloader will allocate the stack based on the program header
 */
 .section .bss
+.global __kernel_data_begin
+.global __kernel_data_end
 .align 16
 //stack grows downwards for x86
 __stack_end:
-.skip 4194304
+.skip 1048576
 __stack_begin:
+
+__kernel_data_begin:
+.skip 4096
+__kernel_data_end:
 
 /*
     __kernel_start placed in the code section
@@ -21,9 +27,9 @@ __stack_begin:
     Paging enabled, everything identity mapped
     64-bit code segment loaded
     The bootloader sets up 4-level recursive page tables and maps the kernel
-    and BootInfo structure (it's address is in %rdi). The framebuffer and the other 
-    initial data files are not mapped, their phyisical address can be found in the BootInfo.
-    The GDT, IDT page tables and other control registers will be properly set up from the C code.
+    and BootInfo structure (it's address is in %rdi). The framebuffer and memory map are not mapped 
+    their physical address can be found in the BootInfo.
+    The GDT, IDT, page tables and other control registers will be properly set up from the C code.
 */
 .section .text
 .global __kernel_start

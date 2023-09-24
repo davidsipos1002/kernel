@@ -6,6 +6,7 @@
 #define PAGING_RAX_01_RDX_PAT           (1 << 16)
 #define PAGING_RAX_01_RDX_MTRR          (1 << 12)
 #define PAGING_RAX_01_RCX_PCID          (1 << 17)
+#define PAGING_RAX_07_RCX_0_RBX_SMEP    (1 << 7)
 #define PAGING_RAX_07_RCX_0_RBX_SMAP    (1 << 20)
 #define PAGING_RAX_07_RCX_0_RCX_PKU     (1 << 3)
 #define PAGING_RAX_07_RCX_0_RCX_CET_SS  (1 << 7)

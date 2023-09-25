@@ -15,6 +15,7 @@ extern char __kernel_data_end[];
 int kernel_main(BootInfo *bootInfo) 
 {
     paging_state* state = paging_init(get_cr3(), (void *) __kernel_data_begin);
+    scratchpad_memory_map(bootInfo->memorymap.map, get_page_count(bootInfo->memorymap.size));
     while (1);
     return 0;
 }

@@ -1,6 +1,7 @@
 #include <paging/paging.h>
 
 #include <cpu/control.h>
+#include <memory/manipulate.h>
 #include <paging/control.h>
 #include <paging/format.h>
 
@@ -59,4 +60,53 @@ paging_state* paging_init(uint64_t cr3, void *state_location)
     state->rflags_ac = PAGING_FLAG_UNSET;
 
     return state;
+}
+
+void* get_pml4e_address(uint64_t pml4e)
+{
+    return (void *) (0xFFFFFFFFFFFFF000 | (pml4e << 3));
+}
+
+void* get_pdpte_address(uint64_t pml4e, uint64_t pdpte)
+{
+    return (void *) (0xFFFFFFFFFFE00000 | (pml4e << PAGING_PT_INDEX_SHIFT) | (pdpte << 3));
+}
+
+void* get_pde_address(uint64_t pml4e, uint64_t pdpte, uint64_t pde)
+{
+    return (void *) (0xFFFFFFFFC0000000 | (pml4e << PAGING_PD_INDEX_SHIFT) | (pdpte << PAGING_PT_INDEX_SHIFT) | (pde << 3));
+}
+
+void* get_pte_address(uint64_t pml4e, uint64_t pdpte, uint64_t pde, uint64_t pte)
+{
+    return (void *) (0xFFFFFF8000000000 | (pml4e << PAGING_PDP_INDEX_SHIFT) |
+        (pdpte << PAGING_PD_INDEX_SHIFT) | (pde << PAGING_PT_INDEX_SHIFT) | (pte << 3));
+} 
+
+uint8_t scratchpad_memory_map(uint64_t addr, uint64_t page_count)
+{
+    if (page_count >= 512)
+        return 0;
+    pte *entry;
+    for (uint64_t i = 0; i < page_count; i++)
+    {   
+        entry = (pte *) get_pte_address(0, 0, 0, i);
+        memset((void *) entry, 0, sizeof(pte));
+        entry->p = 1;
+        entry->r_w = 1;
+        entry->address = addr >> 12;
+        entry->xd = 1;
+        addr += PAGING_PAGE_SIZE;
+    }
+    return 1;
+}
+
+uint64_t get_canonic48(uint64_t addr)
+{
+    return (addr & ((uint64_t) 1 << 47)) ? (addr | 0xFFFF000000000000) : addr;
+}
+
+uint64_t get_page_count(uint64_t size)
+{
+    return size / PAGING_PAGE_SIZE + (size % PAGING_PAGE_SIZE != 0); 
 }

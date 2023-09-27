@@ -282,3 +282,12 @@ rb_node* rb_find(rb_tree *t, uint64_t key)
     }
     return t->nil;
 }
+
+int8_t rb_simple_comparator(uint64_t a, uint64_t b)
+{
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    return 0;
+}

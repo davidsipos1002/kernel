@@ -25,4 +25,6 @@ void rb_insert(rb_tree *t, rb_node *z);
 void rb_delete(rb_tree *t, rb_node *z);
 rb_node* rb_find(rb_tree *t, uint64_t key);
 
+int8_t rb_simple_comparator(uint64_t a, uint64_t b);
+
 #endif

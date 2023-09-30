@@ -1,5 +1,6 @@
 #include <paging/paging.h>
 
+#include <asm/control.h>
 #include <cpu/control.h>
 #include <memory/manipulate.h>
 #include <paging/control.h>
@@ -83,21 +84,37 @@ void* get_pte_address(uint64_t pml4e, uint64_t pdpte, uint64_t pde, uint64_t pte
         (pdpte << PAGING_PD_INDEX_SHIFT) | (pde << PAGING_PT_INDEX_SHIFT) | (pte << 3));
 } 
 
-uint8_t scratchpad_memory_map(uint64_t addr, uint64_t page_count)
+uint8_t scratchpad_memory_map(uint64_t addr, uint64_t pd_index, uint64_t pt_index, uint64_t page_count)
 {
-    if (page_count >= 512)
+    if (page_count > PAGING_PAGE_TABLE_LENGTH || pd_index >= PAGING_PAGE_TABLE_LENGTH)
         return 0;
     pte *entry;
-    for (uint64_t i = 0; i < page_count; i++)
+    uint64_t limit = pt_index + page_count - 1;
+    if (limit > PAGING_PAGE_TABLE_LENGTH)
+        return 0;
+    for (uint64_t i = pt_index; i <= limit; i++)
     {   
-        entry = (pte *) get_pte_address(0, 0, 0, i);
+        entry = (pte *) get_pte_address(0, 0, pd_index, i);
         memset((void *) entry, 0, sizeof(pte));
         entry->p = 1;
         entry->r_w = 1;
         entry->address = addr >> 12;
         entry->xd = 1;
+        invlpg((void *) (pt_index * PAGING_PAGE_TABLE_LENGTH + pt_index * PAGING_PAGE_SIZE));
         addr += PAGING_PAGE_SIZE;
     }
+    return 1;
+}
+
+uint8_t scratchpad_add_page_table(uint64_t pd_index, uint64_t addr)
+{
+    if (pd_index >= PAGING_PAGE_TABLE_LENGTH)
+        return 0;
+    pde* pde_entry = get_pde_address(0, 0, pd_index);
+    pde_entry->p = 1;
+    pde_entry->r_w = 1;
+    pde_entry->address = addr >> 12;
+    pde_entry->xd = 1;
     return 1;
 }
 

@@ -13,6 +13,7 @@ typedef struct
 {
     uint64_t head;
     uint64_t last;
+    uint64_t count;
 } linked_list;
 
 void linked_list_init(linked_list *list);

@@ -6,6 +6,8 @@
 #define PAGING_RAX_01_RDX_PAT           ((uint64_t) 1 << 16)
 #define PAGING_RAX_01_RDX_MTRR          ((uint64_t) 1 << 12)
 #define PAGING_RAX_01_RCX_PCID          ((uint64_t) 1 << 17)
+#define RANDOM_RAX_01_RCX_RDRAND        ((uint64_t) 1 << 30)
+#define RANDOM_RAX_07_RCX_0_RBX_RDSEED  ((uint64_t) 1 << 18)
 #define PAGING_RAX_07_RCX_0_RBX_SMEP    ((uint64_t) 1 << 7)
 #define PAGING_RAX_07_RCX_0_RBX_SMAP    ((uint64_t) 1 << 20)
 #define PAGING_RAX_07_RCX_0_RCX_PKU     ((uint64_t) 1 << 3)

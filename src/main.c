@@ -5,6 +5,7 @@
 #include <memory/simple_allocator.h>
 #include <memory/memory_map.h>
 #include <algorithm/linked_list.h>
+#include <asm/random.h>
 
 extern char __kernel_data_begin[];
 extern char __kernel_data_end[];
@@ -45,6 +46,15 @@ int kernel_main(BootInfo *bootInfo)
     linked_list_delete(&list, 20);
     find = linked_list_find(&list, 20);
     find = linked_list_find(&list, 15);
+    uint64_t test = 0;
+    uint8_t ret = 0;
+    if (random_support())
+    {
+        for (int i = 0; i < 5; i++) 
+        {
+            ret = random_rdrand64_retry(&test, RANDOM_RDRAND_RETRIES);
+        }
+    }
     while (1);
     return 0;
 }

@@ -4,5 +4,6 @@
 #include <stdint.h>
 
 void memset(void *buff, uint8_t val, uint64_t count);
+void memcpy(void *dest, void *src, uint64_t count);
 
 #endif

@@ -127,7 +127,7 @@ typedef struct
     uint64_t pcd : 1;
     uint64_t a : 1;
     uint64_t ignored : 1;
-    uint64_t ps : 1;
+    uint64_t ps : 1; // must be 0
     uint64_t ignored1 : 4;
     uint64_t address : 40;
     uint64_t ignored2 : 11;

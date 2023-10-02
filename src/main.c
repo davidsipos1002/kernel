@@ -22,7 +22,7 @@ int kernel_main(BootInfo *bootInfo)
     mem_map map;
     if(memory_map_parse(bootInfo, rb_alloc, mem_alloc, &map) && memory_map_construct_map(&map))
     {
-        scratchpad_memory_map(bootInfo->framebuffer.base, 0, 0, 10);
+        scratchpad_memory_map(0, bootInfo->framebuffer.base, 10);
         uint8_t *buffer = 0;
         for (uint64_t i = 0; i < 1920; i++)
         {

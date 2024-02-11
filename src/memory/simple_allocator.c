@@ -18,6 +18,12 @@ void* simple_allocator_alloc(simple_allocator *alloc, uint64_t size)
     return (void *) allocated;
 }
 
+void simple_allocator_free(simple_allocator *alloc, uint64_t size)
+{
+    alloc->addr -= size;
+    alloc->size += size;
+}
+
 uint8_t simple_allocator_align(simple_allocator *alloc, uint64_t align)
 {
     uint64_t skip = align - (alloc->addr % align);

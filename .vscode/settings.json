@@ -3,6 +3,7 @@
     "files.associations": {
         "bootinfo.h": "c",
         "format.h": "c",
-        "efi_memory.h": "c"
+        "efi_memory.h": "c",
+        "utils.h": "c"
     }
 }

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include <gcc/utils.h>
 #include <paging/state.h>
 
 #define BUDDY_ALLOCATOR_MIN_ORDER 2
@@ -12,13 +13,13 @@ typedef struct buddy_block
 {
     struct buddy_block *prev;
     struct buddy_block *next;
-} buddy_block;
+} PACKED_STRUCT buddy_block;
 
 typedef struct
 {
     buddy_block *head;
     uint8_t *bitmap;
-} buddy_list;
+} PACKED_STRUCT buddy_list;
 
 typedef struct
 {
@@ -26,14 +27,14 @@ typedef struct
     uint8_t size;
     uint8_t max_order;
     buddy_list **lists;
-} buddy_allocator;
+} PACKED_STRUCT buddy_allocator;
 
 typedef struct
 {
     buddy_allocator *allocator;
     uint8_t size;
     void *addr;
-} buddy_page_frame;
+} PACKED_STRUCT buddy_page_frame;
 
 uint64_t buddy_allocator_get_size(uint8_t size);
 buddy_allocator *buddy_allocator_init(void *buddy_addr, void *start_addr, uint8_t size);

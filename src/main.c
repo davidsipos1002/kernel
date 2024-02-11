@@ -34,6 +34,9 @@ int kernel_main(BootInfo *bootInfo)
             uint64_t start = map->map[i].start;
             uint64_t end = map->map[i].end; 
             uint64_t size = end - start;
+            if (end >= bootInfo->framebuffer.base && start <= bootInfo->framebuffer.base) {
+                size--;
+            }
         }
     } 
     else 

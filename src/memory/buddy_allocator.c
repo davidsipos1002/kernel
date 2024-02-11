@@ -1,5 +1,7 @@
 #include <memory/buddy_allocator.h>
 
+#include <algorithm/bit_field.h>
+
 uint64_t buddy_allocator_get_size(uint8_t size)
 {
     if (size < BUDDY_ALLOCATOR_MIN_ORDER)
@@ -152,17 +154,13 @@ static inline uint64_t  buddy_allocator_get_aligned_buddy(uint64_t addr, uint8_t
 static void buddy_allocator_bitmap_flip(buddy_list *list, buddy_block *block)
 {
     uint64_t bit_no = (((uint64_t) (block - (buddy_block *) (list + 1))) & (~0x1)) >> 1;
-    uint64_t byte_ndx = bit_no >> 3;
-    uint8_t bit_ndx = bit_no & 0x7;
-    list->bitmap[byte_ndx] ^= 1 << bit_ndx;
+    bit_field_toggle_bit(list->bitmap, bit_no);
 }
 
 static uint8_t buddy_allocator_bitmap_get(buddy_list *list, buddy_block *block)
 {
     uint64_t bit_no = (((uint64_t) (block - (buddy_block *) (list + 1))) & (~0x1)) >> 1;
-    uint64_t byte_ndx = bit_no >> 3;
-    uint8_t bit_ndx = bit_no & 0x7;
-    return (list->bitmap[byte_ndx] & (1 << bit_ndx)) != 0;
+    return bit_field_get_bit(list->bitmap, bit_no);
 }
 
 void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame)

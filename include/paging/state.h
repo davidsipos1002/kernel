@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define PAGING_PAGE_SIZE 4096
+#define PAGING_PAGE_SIZE_EXP 12
 
 #define PAGING_DISABLED 0
 #define PAGING_4_LEVEL 4

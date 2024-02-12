@@ -40,9 +40,9 @@ uint64_t buddy_allocator_get_size(uint64_t size)
     return page_count;
 }
 
-static inline buddy_block *buddy_allocator_addr_to_block(buddy_list *list, void* start_addr, uint64_t addr, uint8_t size)
+static inline buddy_block *buddy_allocator_addr_to_block(buddy_list *list, uint64_t start_addr, uint64_t addr, uint8_t size)
 {
-    uint64_t ndx = ((addr - (uint64_t) start_addr) >> size) >> PAGING_PAGE_SIZE_EXP;
+    uint64_t ndx = ((addr - start_addr) >> size) >> PAGING_PAGE_SIZE_EXP;
     return ((buddy_block *) (list + 1)) + ndx;
 }
 
@@ -95,7 +95,7 @@ static inline void ALWAYS_INLINE buddy_allocator_init_fill(buddy_allocator *allo
     uint8_t max_order = allocator->max_order;
     uint64_t page_count = allocator->size;
     uint8_t li = max_order - BUDDY_ALLOCATOR_MIN_ORDER;
-    uint64_t addr = (uint64_t) allocator->start_addr;
+    uint64_t addr = allocator->start_addr;
     for (uint8_t i = max_order; i >= BUDDY_ALLOCATOR_MIN_ORDER && page_count; i--)
     {
         uint64_t block_size = (uint64_t) 1 << i;
@@ -113,7 +113,7 @@ static inline void ALWAYS_INLINE buddy_allocator_init_fill(buddy_allocator *allo
     }
 }
 
-buddy_allocator *buddy_allocator_init(void *buddy_addr, void *start_addr, uint64_t size)
+buddy_allocator *buddy_allocator_init(void *buddy_addr, uint64_t start_addr, uint64_t size)
 {
     uint8_t highest_order = buddy_allocator_highest_order(size);
     if (size <= 1 || highest_order < BUDDY_ALLOCATOR_MIN_ORDER)
@@ -154,9 +154,9 @@ buddy_allocator *buddy_allocator_init(void *buddy_addr, void *start_addr, uint64
     return (buddy_allocator *) buddy_addr;
 }
 
-static inline uint64_t buddy_allocator_block_to_addr(void* start_addr, buddy_list *list, buddy_block *block, uint8_t size)
+static inline uint64_t buddy_allocator_block_to_addr(uint64_t start_addr, buddy_list *list, buddy_block *block, uint8_t size)
 {
-    return (uint64_t) start_addr + (((uint64_t) (block - (buddy_block *) (list + 1)) << size) << PAGING_PAGE_SIZE_EXP);
+    return start_addr + (((uint64_t) (block - (buddy_block *) (list + 1)) << size) << PAGING_PAGE_SIZE_EXP);
 }
 
 static inline uint64_t buddy_allocator_get_buddy(uint64_t addr, uint8_t size)
@@ -220,14 +220,14 @@ void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame)
     if (ndx != max_ndx)
         buddy_allocator_bitmap_flip(list, block);
     frame->allocator = allocator;
-    frame->addr = (void *) buddy_allocator_block_to_addr(allocator->start_addr, list, block, ndx_order);
+    frame->addr = buddy_allocator_block_to_addr(allocator->start_addr, list, block, ndx_order);
 }
 
 void buddy_allocator_free(buddy_allocator *allocator, buddy_page_frame *frame)
 {
     uint8_t ndx = frame->size - BUDDY_ALLOCATOR_MIN_ORDER;
     uint8_t ndx_order = frame->size;
-    uint64_t addr = (uint64_t) frame->addr;
+    uint64_t addr = frame->addr;
     buddy_list *list = allocator->lists[ndx];
     buddy_block *block = buddy_allocator_addr_to_block(list, allocator->start_addr, addr, ndx_order);
     buddy_allocator_list_insert(list, block);

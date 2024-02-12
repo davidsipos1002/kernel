@@ -24,7 +24,7 @@ typedef struct
 
 typedef struct
 {
-    void *start_addr;
+    uint64_t start_addr;
     uint64_t size;
     uint8_t max_order;
     buddy_list **lists;
@@ -34,11 +34,11 @@ typedef struct
 {
     buddy_allocator *allocator;
     uint8_t size;
-    void *addr;
+    uint64_t addr;
 } PACKED_STRUCT buddy_page_frame;
 
 uint64_t buddy_allocator_get_size(uint64_t size);
-buddy_allocator *buddy_allocator_init(void *buddy_addr, void *start_addr, uint64_t size);
+buddy_allocator *buddy_allocator_init(void *buddy_addr, uint64_t start_addr, uint64_t size);
 void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame);
 void buddy_allocator_free(buddy_allocator *allocator, buddy_page_frame *frame);
 

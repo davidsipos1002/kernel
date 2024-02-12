@@ -3,7 +3,7 @@ ENTRY(__kernel_start)
 SECTIONS
 {
 	
-	. = 200M ;
+	. = 400M ;
 
 	__text_begin = . ;
 	.text BLOCK(4K) :

@@ -17,7 +17,7 @@ __stack_end:
 __stack_begin:
 
 __kernel_data_begin:
-.skip 8388608
+.skip 16777216
 __kernel_data_end:
 
 /*

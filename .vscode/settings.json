@@ -5,6 +5,7 @@
         "format.h": "c",
         "efi_memory.h": "c",
         "utils.h": "c",
-        "page_allocator.h": "c"
+        "page_allocator.h": "c",
+        "paging.h": "c"
     }
 }

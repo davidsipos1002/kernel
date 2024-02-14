@@ -8,6 +8,7 @@
         "page_allocator.h": "c",
         "paging.h": "c",
         "gdt.h": "c",
-        "tss.h": "c"
+        "tss.h": "c",
+        "cstring": "c"
     }
 }

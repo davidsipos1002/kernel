@@ -156,3 +156,11 @@ uint64_t paging_get_virtual_address(uint64_t pml4_index, uint64_t pdpt_index, ui
     return get_canonic48((pml4_index << PAGING_PML4_INDEX_SHIFT) | (pdpt_index << PAGING_PDP_INDEX_SHIFT)
         | (pd_index << PAGING_PD_INDEX_SHIFT) | (pt_index << PAGING_PT_INDEX_SHIFT));
 }
+
+uint64_t paging_translate(uint64_t vaddr)
+{
+    uint64_t pml4i, pdpti, pdi, pti;
+    get_indices(vaddr, &pml4i, &pdpti, &pdi, &pti);
+    pte *pe = get_pte_address(pml4i, pdpti, pdi, pti);
+    return pe->address << PAGING_PAGE_SIZE_EXP;
+}

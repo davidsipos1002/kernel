@@ -122,10 +122,8 @@ static uint64_t get_free_pages(free_regs *regs, uint64_t *ndx, uint64_t count, u
 static inline void ALWAYS_INLINE prepare_page_tables(uint64_t pd_count, uint64_t pt_count, free_regs *regs, uint64_t *free_ndx)
 {
     uint64_t got = 0;
-    // bootloader adds the first pd and pt
     if (pd_count >= 1)
     {
-        pd_count--;
         uint64_t pdpt_ndx = 1;
         while(pd_count)
         {
@@ -138,9 +136,8 @@ static inline void ALWAYS_INLINE prepare_page_tables(uint64_t pd_count, uint64_t
     
     if (pt_count >= 1)
     {
-        pt_count--; 
-        uint64_t pdpt_ndx = 0;
-        uint64_t pd_ndx = 1;
+        uint64_t pdpt_ndx = 1;
+        uint64_t pd_ndx = 0;
         while (pt_count)
         {
             uint64_t addr = get_free_pages(regs, free_ndx, 1, &got);
@@ -172,7 +169,7 @@ static uint64_t map_buddy_area(uint64_t vaddr, uint64_t buddy_size, free_regs *r
 
 static uint64_t init_buddies(mem_map *map, simple_allocator *alloc, free_regs *regs, uint64_t *free_ndx, buddy_allocator ***buddies)
 {
-    uint64_t vaddr = 0;
+    uint64_t vaddr = paging_get_virtual_address(0, 1, 0, 0);
     uint64_t buddy_ndx = 0;
     for (uint64_t i = 0; i < map->length; i++)
         if (map->map[i].start < map->map[i].end)

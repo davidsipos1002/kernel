@@ -150,3 +150,9 @@ uint64_t get_page_count(uint64_t size)
 {
     return size / PAGING_PAGE_SIZE + (size % PAGING_PAGE_SIZE != 0); 
 }
+
+uint64_t paging_get_virtual_address(uint64_t pml4_index, uint64_t pdpt_index, uint64_t pd_index, uint64_t pt_index)
+{
+    return get_canonic48((pml4_index << PAGING_PML4_INDEX_SHIFT) | (pdpt_index << PAGING_PDP_INDEX_SHIFT)
+        | (pd_index << PAGING_PD_INDEX_SHIFT) | (pt_index << PAGING_PT_INDEX_SHIFT));
+}

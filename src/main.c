@@ -35,7 +35,12 @@ static mem_map *init_mem_map(BootInfo *bootInfo, simple_allocator *data_alloc)
     return map;
 }
 
-void double_except_test()
+void double_except()
+{
+    kernel_loop();
+}
+
+void page_fault()
 {
     kernel_loop();
 }
@@ -72,7 +77,8 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     memset(state->idt, 0, PAGING_PAGE_SIZE);
     lidt(state->idt, PAGING_PAGE_SIZE - 1); 
     
-    idt_register_handler(state->idt, 8, double_except_test, 1, 0, 0);
+    idt_register_handler(state->idt, 8, double_except, 1, 0, 0);
+    idt_register_handler(state->idt, 14, page_fault, 1, 0, 0);
 }
 
 static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_allocator *data_alloc)
@@ -96,10 +102,7 @@ int kernel_main(BootInfo *bootInfo)
     memcpy(simple_allocator_alloc(data_alloc, sizeof(BootInfo)), bootInfo, sizeof(BootInfo));
     mem_map *map = init_mem_map(bootInfo, data_alloc);
     init_cpu_state(map, c_state);
-    // trigger page fault and catch double exception
-    uint64_t *a = 0xFFFFFFFF;
-    *a = 0;
-    // page_allocator *page_alloc = init_page_alloc(bootInfo, data_alloc, map);
+    page_allocator *page_alloc = init_page_alloc(bootInfo, map, data_alloc);
     kernel_loop();
     return 0;
 }

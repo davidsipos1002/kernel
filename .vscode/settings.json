@@ -6,6 +6,8 @@
         "efi_memory.h": "c",
         "utils.h": "c",
         "page_allocator.h": "c",
-        "paging.h": "c"
+        "paging.h": "c",
+        "gdt.h": "c",
+        "tss.h": "c"
     }
 }

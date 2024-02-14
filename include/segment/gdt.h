@@ -3,9 +3,11 @@
 
 #include <stdint.h>
 
+#include <cpu/state.h>
 #include <segment/format.h>
 
-void segment_fill_gdt(void *gdt);
-void segment_set_gdt(void *gdt);
+void segment_fill_gdt(cpu_state *state);
+void segment_set_gdt(cpu_state *state);
+void segment_fill_tss(cpu_state *state);
 
 #endif

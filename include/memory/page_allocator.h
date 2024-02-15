@@ -30,5 +30,7 @@ typedef struct
 } page_allocator;
 
 page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc); 
+void *page_allocator_alloc(page_allocator *allocator, buddy_page_frame *frame, uint8_t size);
+void page_allocator_free(page_allocator *allocator, buddy_page_frame *frame);
 
 #endif

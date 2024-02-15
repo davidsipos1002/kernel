@@ -306,3 +306,23 @@ page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc)
 
     return (page_allocator *) addr;
 } 
+
+void *page_allocator_alloc(page_allocator *allocator, buddy_page_frame *frame, uint8_t size)
+{
+    frame->size = size;
+    double_linked_list_node *curr = allocator->buddies.head;
+    do
+    {
+        page_allocator_buddy *buddy = (page_allocator_buddy *) curr;
+        buddy_allocator_alloc(buddy->allocator, frame);
+        if (frame->addr)
+            break;
+        curr = curr->next;
+    } while (curr != allocator->buddies.head);
+    return (void *) frame->addr; 
+}
+
+void page_allocator_free(page_allocator *allocator, buddy_page_frame *frame)
+{
+    buddy_allocator_free(frame->allocator, frame); 
+}

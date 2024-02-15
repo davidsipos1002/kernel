@@ -10,6 +10,7 @@
         "gdt.h": "c",
         "tss.h": "c",
         "cstring": "c",
-        "buddy_allocator.h": "c"
+        "buddy_allocator.h": "c",
+        "state.h": "c"
     }
 }

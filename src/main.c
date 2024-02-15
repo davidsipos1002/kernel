@@ -2,6 +2,7 @@
 #include <asm/registers.h>
 #include <boot/bootinfo.h>
 #include <cpu/state.h>
+#include <graphics/framebuffer.h>
 #include <interrupt/idt.h>
 #include <memory/manipulate.h>
 #include <memory/memory_map.h>
@@ -101,9 +102,24 @@ int kernel_main(BootInfo *bootInfo)
     paging_state *p_state = paging_init(get_cr3(), simple_allocator_alloc(data_alloc, sizeof(paging_state)));
     cpu_state *c_state = simple_allocator_alloc(data_alloc, sizeof(cpu_state));
     memcpy(simple_allocator_alloc(data_alloc, sizeof(BootInfo)), bootInfo, sizeof(BootInfo));
+
     mem_map *map = init_mem_map(bootInfo, data_alloc);
+
     init_cpu_state(map, c_state);
+
     page_allocator *page_alloc = init_page_alloc(bootInfo, map, data_alloc);
+
+    graphics_framebuffer *framebuffer = simple_allocator_alloc(data_alloc, sizeof(graphics_framebuffer));
+    graphics_framebuffer_init(bootInfo, framebuffer, page_alloc); 
+    
+    for (uint32_t i = 0;i < framebuffer->height; i++)
+    {
+        for (uint32_t j = 0; j < framebuffer->width; j++)
+        {
+            graphics_framebuffer_set(framebuffer, i, j, 0, 255, 0);
+        }
+    }
+
     kernel_loop();
     return 0;
 }

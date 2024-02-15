@@ -132,14 +132,12 @@ buddy_allocator *buddy_allocator_init(void *buddy_addr, uint64_t start_addr, uin
     for (uint8_t i = BUDDY_ALLOCATOR_MIN_ORDER; i <= allocator->max_order; i++)
     {
         buddy_list *list = (buddy_list *) addr;
-        memset(list, 0, sizeof(buddy_list));
         list->head = 0;
         list->bitmap = 0;
         allocator->lists[li++] = list;
         addr += sizeof(buddy_list);
         uint64_t list_count = size >> i;
         uint64_t list_size = list_count * sizeof(buddy_block);
-        memset((void *) addr, 0, list_size);
         addr += list_size;
         if (i != allocator->max_order)
         {

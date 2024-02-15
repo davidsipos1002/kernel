@@ -9,6 +9,7 @@
         "paging.h": "c",
         "gdt.h": "c",
         "tss.h": "c",
-        "cstring": "c"
+        "cstring": "c",
+        "buddy_allocator.h": "c"
     }
 }

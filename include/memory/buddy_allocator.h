@@ -26,6 +26,7 @@ typedef struct
 {
     uint64_t start_addr;
     uint64_t size;
+    uint64_t free_pages;
     uint8_t max_order;
     buddy_list **lists;
 } PACKED_STRUCT buddy_allocator;

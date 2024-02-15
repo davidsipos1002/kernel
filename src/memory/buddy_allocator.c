@@ -123,6 +123,7 @@ buddy_allocator *buddy_allocator_init(void *buddy_addr, uint64_t start_addr, uin
     buddy_allocator *allocator = (buddy_allocator *) addr;
     allocator->start_addr = start_addr;
     allocator->size = size;
+    allocator->free_pages = size;
     allocator->max_order = highest_order < BUDDY_ALLOCATOR_MAX_ORDER ? highest_order : BUDDY_ALLOCATOR_MAX_ORDER;
     addr += sizeof(buddy_allocator);
     allocator->lists = (buddy_list **) addr;
@@ -183,7 +184,7 @@ void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame)
 {
     frame->addr = 0;
 
-    if (frame->size < BUDDY_ALLOCATOR_MIN_ORDER && frame->size > allocator->max_order)
+    if (frame->size < BUDDY_ALLOCATOR_MIN_ORDER || frame->size > allocator->max_order || allocator->free_pages < ((uint64_t) 1 << frame->size))
         return;
 
     uint8_t frame_ndx = frame->size - BUDDY_ALLOCATOR_MIN_ORDER;
@@ -219,6 +220,7 @@ void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame)
         buddy_allocator_bitmap_flip(list, block);
     frame->allocator = allocator;
     frame->addr = buddy_allocator_block_to_addr(allocator->start_addr, list, block, ndx_order);
+    allocator->free_pages -= (uint64_t) 1 << frame->size;
 }
 
 void buddy_allocator_free(buddy_allocator *allocator, buddy_page_frame *frame)
@@ -248,6 +250,7 @@ void buddy_allocator_free(buddy_allocator *allocator, buddy_page_frame *frame)
             buddy_allocator_bitmap_flip(list, block);
     }
 
+    allocator->free_pages += (uint64_t) 1 << frame->size;
     frame->allocator = 0;
     frame->size = 0;
     frame->addr = 0;

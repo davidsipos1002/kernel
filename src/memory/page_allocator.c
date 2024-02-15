@@ -2,6 +2,7 @@
 
 #include <algorithm/quicksort.h>
 #include <gcc/utils.h>
+#include <memory/manipulate.h>
 #include <paging/paging.h>
 #include <paging/state.h>
 
@@ -113,40 +114,36 @@ static uint64_t get_free_pages(free_regs *regs, uint64_t *ndx, uint64_t count, u
     regs->regs[*ndx].length -= *got;
     if (!regs->regs[*ndx].length)
         *ndx += 1;
+    regs->pages -= *got;
     return addr;
 }
 
 static inline void ALWAYS_INLINE prepare_page_tables(uint64_t pd_count, uint64_t pt_count, free_regs *regs, uint64_t *free_ndx)
 {
     uint64_t got = 0;
-    if (pd_count >= 1)
+    uint64_t pdpt_ndx = 1;
+    uint64_t pd_ndx = 0;
+    uint64_t addr = 0;
+    while(pd_count)
     {
-        uint64_t pdpt_ndx = 1;
-        while(pd_count)
-        {
-            uint64_t addr = get_free_pages(regs, free_ndx, 1, &got);
-            scratchpad_add_page_directory(0, pdpt_ndx, addr);
-            pd_count--;
-            pdpt_ndx++;
-        }
+        addr = get_free_pages(regs, free_ndx, 1, &got);
+        scratchpad_add_page_directory(0, pdpt_ndx, addr);
+        pd_count--;
+        pdpt_ndx++;
     } 
     
-    if (pt_count >= 1)
+    pdpt_ndx = 1;
+    while (pt_count)
     {
-        uint64_t pdpt_ndx = 1;
-        uint64_t pd_ndx = 0;
-        while (pt_count)
+        addr = get_free_pages(regs, free_ndx, 1, &got);
+        scratchpad_add_page_table(0, pdpt_ndx, pd_ndx, addr);
+        pd_ndx++;
+        if (pd_ndx >= PAGING_PAGE_TABLE_LENGTH)
         {
-            uint64_t addr = get_free_pages(regs, free_ndx, 1, &got);
-            scratchpad_add_page_table(0, pdpt_ndx, pd_ndx, addr);
-            pd_ndx++;
-            if (pd_ndx >= PAGING_PAGE_TABLE_LENGTH)
-            {
-                pd_ndx = 0;
-                pdpt_ndx++;
-            }
-            pt_count--;
+            pd_ndx = 0;
+            pdpt_ndx++;
         }
+        pt_count--;
     }
 }
 
@@ -164,7 +161,7 @@ static uint64_t map_buddy_area(uint64_t vaddr, uint64_t buddy_size, free_regs *r
     return vaddr;
 }
 
-static uint64_t init_buddies(mem_map *map, simple_allocator *alloc, free_regs *regs, uint64_t *free_ndx, buddy_allocator ***buddies)
+static uint64_t init_buddies(mem_map *map, simple_allocator *alloc, free_regs *regs, uint64_t *free_ndx, buddy_allocator ***buddies, uint64_t *buddy_count)
 {
     uint64_t vaddr = paging_get_virtual_address(0, 1, 0, 0);
     uint64_t buddy_ndx = 0;
@@ -186,7 +183,84 @@ static uint64_t init_buddies(mem_map *map, simple_allocator *alloc, free_regs *r
         }
     }
     *buddies = allocs;
+    *buddy_count = buddy_ndx;
     return vaddr;
+}
+
+static inline void ALWAYS_INLINE prepare_page_alloc_struct_area(uint64_t struct_size, uint64_t vaddr, free_regs *regs, uint64_t *free_ndx, buddy_allocator *alloc, uint64_t last_pd)
+{
+    struct_size = struct_size / PAGING_PAGE_SIZE + (struct_size % PAGING_PAGE_SIZE != 0);
+    uint64_t pt_count = struct_size / PAGING_TABLE_LENGTH 
+        + (struct_size % PAGING_TABLE_LENGTH != 0);
+    struct_size = struct_size + pt_count + 1;
+    
+    if (struct_size > regs->pages)
+    {
+        uint64_t sz = struct_size - regs->pages;
+        buddy_page_frame frame;
+        for (uint64_t i = BUDDY_ALLOCATOR_MIN_ORDER; i <= BUDDY_ALLOCATOR_MAX_ORDER; i++)
+        {
+            if (sz <= ((uint64_t) 1 << i))
+            {
+                frame.size = i;
+                break;
+            }
+        }
+        buddy_allocator_alloc(alloc, &frame);
+        add_to_free_reg(regs, frame.addr, 1 << frame.size); 
+    }
+    
+    uint64_t got = 0;
+    uint64_t paddr = get_free_pages(regs, free_ndx, 1, &got);
+    scratchpad_add_page_directory(0, last_pd + 1, paddr);
+    uint64_t pdpti = last_pd;
+    uint64_t pdi = pt_count % PAGING_PAGE_TABLE_LENGTH; 
+    if (!pdi)
+        pdpti++;
+    struct_size -= pt_count + 1;
+    while(pt_count)
+    {
+        paddr = get_free_pages(regs, free_ndx, 1, &got);
+        scratchpad_add_page_table(0, pdpti, pdi, paddr);
+        pdi++;
+        if (pdi >= PAGING_PAGE_TABLE_LENGTH)
+        {
+            pdi = 0;
+            pdpti++;
+        }
+        pt_count--;
+    }
+    map_buddy_area(vaddr, struct_size, regs, free_ndx);
+    memset((void *) vaddr, 0, struct_size * 4096);
+}
+
+static inline void ALWAYS_INLINE page_alloc_struct_fill(uint64_t vaddr, buddy_allocator **buddies, uint64_t buddy_count, free_regs *regs)
+{
+    page_allocator *page_alloc = (page_allocator *) vaddr;
+    double_linked_list_init(&page_alloc->buddies);
+    double_linked_list_init(&page_alloc->regions); 
+    vaddr += sizeof(page_allocator); 
+    
+    for (uint64_t i = 0;i < buddy_count; i++)
+    {
+        page_allocator_buddy *buddy = (page_allocator_buddy *) vaddr;
+        buddy->allocator = buddies[i];
+        double_linked_list_insert_back(&page_alloc->buddies, (double_linked_list_node *) buddy);
+        vaddr += sizeof(page_allocator_buddy);
+    }
+    
+    for (uint64_t i = 0;i < regs->count; i++)
+    {
+        free_reg *r = &regs->regs[i];
+        if (r->length)
+        {
+            page_allocator_region *region = (page_allocator_region *) vaddr;
+            region->start = r->start;
+            region->length = r->length;
+            double_linked_list_insert_back(&page_alloc->regions, (double_linked_list_node *) region);
+            vaddr += sizeof(page_allocator_region);
+        }
+    }
 }
 
 page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc)
@@ -216,7 +290,19 @@ page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc)
     prepare_page_tables(pd_count, pt_count, &regs, &free_ndx);
 
     buddy_allocator **buddies;
-    uint64_t addr = init_buddies(map, alloc, &regs, &free_ndx, &buddies);
+    uint64_t buddy_count = 0;
+    uint64_t addr = init_buddies(map, alloc, &regs, &free_ndx, &buddies, &buddy_count);
     
-    return (page_allocator *) 1;
+    uint64_t free_reg_count = 0;
+    for (uint64_t i = 0;i < regs.count; i++)
+        if (regs.regs[i].length)
+            free_reg_count++;
+    uint64_t struct_size = sizeof(page_allocator) + 
+        sizeof(page_allocator_buddy) * buddy_count + sizeof(page_allocator_region) * (free_reg_count + 1);
+
+    prepare_page_alloc_struct_area(struct_size, addr, &regs, &free_ndx, buddies[0], pd_count);
+
+    page_alloc_struct_fill(addr, buddies, buddy_count, &regs);
+
+    return (page_allocator *) addr;
 } 

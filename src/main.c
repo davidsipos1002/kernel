@@ -89,6 +89,7 @@ static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_
     if (!pg_alloc)
         kernel_loop();
     page_allocator *page_alloc = page_allocator_init(map, pg_alloc);
+    simple_allocator_free(data_alloc, pg_alloc_size);
     if (!page_alloc)
         kernel_loop();
     return page_alloc;

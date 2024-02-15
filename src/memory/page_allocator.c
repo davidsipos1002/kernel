@@ -29,10 +29,10 @@ static inline void ALWAYS_INLINE add_to_free_reg(free_regs *regs, uint64_t start
 
 static inline void ALWAYS_INLINE reserve_region(mem_region *reg, uint64_t length, free_regs *regs)
 {
+    add_to_free_reg(regs, reg->start, length);
     uint64_t temp = reg->start;
     reg->start = reg->end;
     reg->end = temp;
-    add_to_free_reg(regs, reg->start, length);
 }
 
 static uint64_t shrink_region(mem_region *reg, uint64_t length, uint64_t count, free_regs *regs)
@@ -55,10 +55,7 @@ static void region_initial_process(mem_region *region, uint64_t *buddy_total, fr
     uint64_t length = ((region->end - region->start) >> PAGING_PAGE_SIZE_EXP) + 1;
     if (length < PAGE_ALLOCATOR_MIN_REGION)
     {
-        uint64_t temp = region->start;
-        region->start = region->end;
-        region->end = temp;
-        add_to_free_reg(regs, region->start, length);
+        reserve_region(region, length, regs);
         return;
     }
     uint64_t r = length % (1 << BUDDY_ALLOCATOR_MIN_ORDER);
@@ -220,6 +217,6 @@ page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc)
 
     buddy_allocator **buddies;
     uint64_t addr = init_buddies(map, alloc, &regs, &free_ndx, &buddies);
-
+    
     return (page_allocator *) 1;
 } 

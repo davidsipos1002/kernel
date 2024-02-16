@@ -93,6 +93,8 @@ void graphics_framebuffer_init(BootInfo *bootInfo, graphics_framebuffer *framebu
 
 void graphics_framebuffer_set(graphics_framebuffer *framebuffer, uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue)
 {
+    if (x >= framebuffer->height || y >= framebuffer->width)
+        return;
     uint32_t *pixel = (uint32_t *) (((uint8_t *) framebuffer->vaddr) + x * framebuffer->pitch * framebuffer->pixel_size +
         y * framebuffer->pixel_size);
     *pixel = ((uint32_t) red << 16) | ((uint32_t) green << 8) | ((uint32_t) blue);

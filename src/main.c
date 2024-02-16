@@ -3,6 +3,8 @@
 #include <boot/bootinfo.h>
 #include <cpu/state.h>
 #include <graphics/framebuffer.h>
+#include <graphics/glyph.h>
+#include <graphics/print.h>
 #include <interrupt/idt.h>
 #include <memory/manipulate.h>
 #include <memory/memory_map.h>
@@ -96,6 +98,16 @@ static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_
     return page_alloc;
 }
 
+static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_allocator *page_alloc, simple_allocator *data_alloc)
+{
+    graphics_glyph_description *desc = simple_allocator_alloc(data_alloc, sizeof(graphics_glyph_description));
+    graphics_framebuffer_init(bootInfo, &desc->framebuffer, page_alloc); 
+    desc->glyph_vaddr = 0x18FFE000; 
+    desc->width = *((uint8_t *) desc->glyph_vaddr);
+    desc->height = *((uint8_t *) desc->glyph_vaddr + 1);
+    return desc;
+}
+
 int kernel_main(BootInfo *bootInfo) 
 {
     simple_allocator *data_alloc = simple_allocator_init((void *) __kernel_data_begin, __kernel_data_end - __kernel_data_begin); 
@@ -109,17 +121,19 @@ int kernel_main(BootInfo *bootInfo)
 
     page_allocator *page_alloc = init_page_alloc(bootInfo, map, data_alloc);
 
-    graphics_framebuffer *framebuffer = simple_allocator_alloc(data_alloc, sizeof(graphics_framebuffer));
-    graphics_framebuffer_init(bootInfo, framebuffer, page_alloc); 
+    graphics_glyph_description *glyph_desc = init_graphics(bootInfo, page_alloc, data_alloc);
+    graphics_glyph_color color;
+    color.bg_red = 0;
+    color.bg_green = 0;
+    color.bg_blue = 0;
+    color.fg_red = 0;
+    color.fg_blue = 0;
+    color.fg_green = 255;
+    graphics_print_string(glyph_desc, "Welcome to SipOS!", 0, 0, &color);
+    color.fg_red = 255;
+    graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
+    graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
     
-    for (uint32_t i = 0;i < framebuffer->height; i++)
-    {
-        for (uint32_t j = 0; j < framebuffer->width; j++)
-        {
-            graphics_framebuffer_set(framebuffer, i, j, 0, 255, 0);
-        }
-    }
-
     kernel_loop();
     return 0;
 }

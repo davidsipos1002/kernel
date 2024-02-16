@@ -11,6 +11,8 @@
         "tss.h": "c",
         "cstring": "c",
         "buddy_allocator.h": "c",
-        "state.h": "c"
+        "state.h": "c",
+        "control.h": "c",
+        "glyph.h": "c"
     }
 }

@@ -113,15 +113,16 @@ int kernel_main(BootInfo *bootInfo)
     simple_allocator *data_alloc = simple_allocator_init((void *) __kernel_data_begin, __kernel_data_end - __kernel_data_begin); 
     paging_state *p_state = paging_init(get_cr3(), simple_allocator_alloc(data_alloc, sizeof(paging_state)));
     cpu_state *c_state = simple_allocator_alloc(data_alloc, sizeof(cpu_state));
-    memcpy(simple_allocator_alloc(data_alloc, sizeof(BootInfo)), bootInfo, sizeof(BootInfo));
+    BootInfo *boot_info = simple_allocator_alloc(data_alloc, sizeof(BootInfo));
+    memcpy(boot_info, bootInfo, sizeof(BootInfo));
 
-    mem_map *map = init_mem_map(bootInfo, data_alloc);
+    mem_map *map = init_mem_map(boot_info, data_alloc);
 
     init_cpu_state(map, c_state);
 
-    page_allocator *page_alloc = init_page_alloc(bootInfo, map, data_alloc);
+    page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
-    graphics_glyph_description *glyph_desc = init_graphics(bootInfo, page_alloc, data_alloc);
+    graphics_glyph_description *glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
     graphics_glyph_color color;
     color.bg_red = 0;
     color.bg_green = 0;

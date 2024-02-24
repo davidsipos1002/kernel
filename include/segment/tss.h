@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <cpu/state.h>
+#include <gcc/utils.h>
 
 typedef struct
 {
@@ -13,7 +14,7 @@ typedef struct
     uint32_t ist[14];
     uint32_t reserved_2[2];
     uint32_t io_map_base;
-} task_state_segment;
+} PACKED_STRUCT task_state_segment;
 
 void tss_fill(cpu_state *state);
 

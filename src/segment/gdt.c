@@ -113,7 +113,7 @@ void segment_fill_tss(cpu_state *state)
     p += 5 * sizeof(segment_descriptor);
     ldt64_descriptor *desc = (ldt64_descriptor *) p;
     uint64_t base = (uint64_t) state->tss;
-    desc->limit_0 = 403;
+    desc->limit_0 = 104;
     desc->base_0 = base & 0xFFFF;
     base >>= 16;
     desc->base_1 = base & 0xFF;

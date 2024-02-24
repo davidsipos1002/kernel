@@ -56,6 +56,11 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     state->idt = (void *) 0x1000;
     state->ist_count = 1; 
     state->ist[0] = 0x2000;
+    state->io_map_base = sizeof(task_state_segment);
+    uint64_t flags = get_rflags();
+    flags &= ~((1 << 13) | (1 << 12));
+    set_rflags(flags);
+
     void *addr = 0;
 
     for (uint64_t i = 0; i < map->length; i++)

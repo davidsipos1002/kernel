@@ -12,4 +12,5 @@ mkdir build/config
 mkdir build/init
 cp external/bootloader/BOOTX64.EFI build/efi/boot/BOOTX64.EFI
 cp external/bootloader/boot.cfg build/config/boot.cfg
-cp external/fonts/${1} build/init/${1}
+cp external/fonts/glyphs build/init/glyphs
+cp external/keyboard build/init/keyboard

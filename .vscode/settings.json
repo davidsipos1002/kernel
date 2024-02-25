@@ -13,6 +13,7 @@
         "buddy_allocator.h": "c",
         "state.h": "c",
         "control.h": "c",
-        "glyph.h": "c"
+        "glyph.h": "c",
+        "pic.h": "c"
     }
 }

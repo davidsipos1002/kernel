@@ -190,7 +190,8 @@ void buddy_allocator_alloc(buddy_allocator *allocator, buddy_page_frame *frame)
     uint8_t frame_ndx = frame->size - BUDDY_ALLOCATOR_MIN_ORDER;
     uint8_t ndx = frame_ndx;
     uint8_t max_ndx = allocator->max_order - BUDDY_ALLOCATOR_MIN_ORDER;
-    while (!allocator->lists[ndx]->head && ndx <= max_ndx)
+
+    while (ndx <= max_ndx && !allocator->lists[ndx]->head)
         ndx++;
 
     if (ndx > max_ndx)

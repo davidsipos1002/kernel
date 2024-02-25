@@ -7,5 +7,6 @@ void invlpg(void *p);
 void wbinvd();
 void ltr(uint16_t selector);
 void lidt(void *base, uint16_t limit);
+void sti();
 
 #endif

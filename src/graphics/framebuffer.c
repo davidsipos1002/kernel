@@ -25,7 +25,7 @@ static uint64_t alloc_page_tables(graphics_framebuffer *framebuffer, page_alloca
             break;
         }
     }
-    return (uint64_t) page_allocator_alloc(alloc, &frame, order); 
+    return (uint64_t) page_allocator_alloc(alloc, &frame, BUDDY_ALLOCATOR_MAX_ORDER); 
 }
 
 static uint64_t prepare_page_tables(uint64_t addr, uint64_t pdp_count, uint64_t pd_count, uint64_t pt_count)

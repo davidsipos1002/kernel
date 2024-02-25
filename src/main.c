@@ -2,6 +2,7 @@
 #include <asm/registers.h>
 #include <boot/bootinfo.h>
 #include <cpu/state.h>
+#include <gcc/interrupt.h>
 #include <graphics/framebuffer.h>
 #include <graphics/glyph.h>
 #include <graphics/print.h>
@@ -12,6 +13,8 @@
 #include <memory/page_allocator.h>
 #include <memory/simple_allocator.h>
 #include <paging/paging.h>
+#include <ps2/controller.h>
+#include <ps2/keyboard.h>
 #include <segment/gdt.h>
 #include <segment/tss.h>
 
@@ -39,13 +42,27 @@ static mem_map *init_mem_map(BootInfo *bootInfo, simple_allocator *data_alloc)
     return map;
 }
 
+BootInfo *boot;
+
 void double_except()
 {
+    scratchpad_memory_map(0, boot->framebuffer.base, 1);
+    uint32_t *p = 0;
+    for (uint32_t i = 0;i < 100;i++) {
+        *p = 0xFF0000;
+        p++;
+    }
     kernel_loop();
 }
 
-void page_fault()
+void INTERRUPT page_fault(no_priv_change_frame *frame, uint64_t error_code)
 {
+    scratchpad_memory_map(0, boot->framebuffer.base, 1);
+    uint32_t *p = 0;
+    for (uint64_t i = 0;i < 100; i++) {
+        *p = 0xFF;
+        p++;
+    }
     kernel_loop();
 }
 
@@ -62,11 +79,8 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     uint64_t flags = get_rflags();
     flags &= ~((1 << 13) | (1 << 12));
     set_rflags(flags);
-    pic_init(0x20, 0x28); 
-    pic_clear_mask(2);
 
     void *addr = 0;
-
     for (uint64_t i = 0; i < map->length; i++)
     {
         mem_region *reg = &map->map[i];
@@ -90,7 +104,7 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     lidt(state->idt, PAGING_PAGE_SIZE - 1); 
     
     idt_register_handler(state->idt, 8, double_except, 1, 0, 0);
-    idt_register_handler(state->idt, 14, page_fault, 1, 0, 0);
+    idt_register_handler(state->idt, 14, (idt_handler) page_fault, 1, 0, 0);
 }
 
 static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_allocator *data_alloc)
@@ -117,6 +131,18 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
+static void keyboard_init(cpu_state *state)
+{
+    pic_init(0x20, 0x28); 
+    if (!ps2_controller_init()) {
+        kernel_loop();
+    }
+    ps2_keyboard_init(state->idt, 0x21);
+    sti();
+}
+
+graphics_glyph_description *glyph_desc;
+
 int kernel_main(BootInfo *bootInfo) 
 {
     simple_allocator *data_alloc = simple_allocator_init((void *) __kernel_data_begin, __kernel_data_end - __kernel_data_begin); 
@@ -124,14 +150,16 @@ int kernel_main(BootInfo *bootInfo)
     cpu_state *c_state = simple_allocator_alloc(data_alloc, sizeof(cpu_state));
     BootInfo *boot_info = simple_allocator_alloc(data_alloc, sizeof(BootInfo));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
+    boot = boot_info;
 
     mem_map *map = init_mem_map(boot_info, data_alloc);
-
+    
     init_cpu_state(map, c_state);
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
-    graphics_glyph_description *glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
+    glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
+    
     graphics_glyph_color color;
     color.bg_red = 0;
     color.bg_green = 0;
@@ -144,6 +172,8 @@ int kernel_main(BootInfo *bootInfo)
     graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
     graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
     
+    keyboard_init(c_state);
+
     kernel_loop();
     return 0;
 }

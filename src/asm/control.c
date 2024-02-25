@@ -36,6 +36,14 @@ void lidt(void *base, uint16_t limit)
         : "memory");
 }
 
+void cli()
+{
+    __asm__ __volatile__ ("cli"
+        :
+        :
+        : "memory");
+}
+
 void sti()
 {
     __asm__ __volatile__ ("sti"

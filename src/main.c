@@ -174,6 +174,27 @@ int kernel_main(BootInfo *bootInfo)
     
     keyboard_init(c_state);
 
+    uint32_t row, col;
+    row = 5;
+    col = 0;
+    ps2_key_event event;
+    while (1)
+    {
+        ps2_keyboard_get_key(&event);
+        if (event.ascii)
+        {
+            char buff[2];
+            buff[0] = event.ascii;
+            buff[1] = 0; 
+            graphics_print_string(glyph_desc, buff, row, col, &color);
+            col++;
+            if (col == 100) {
+                row++;
+                col = 0;
+            }
+        }
+    }
+
     kernel_loop();
     return 0;
 }

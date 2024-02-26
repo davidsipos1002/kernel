@@ -30,21 +30,31 @@ void INTERRUPT ps2_keyboard_irq(no_priv_change_frame *stack_frame)
     uint8_t data = io_in(PS2_DATA);
     uint8_t e, released;
     e = released = 0;
+
     if (data == 0xE0) 
     {
         e = 1;
-        data = io_in(PS2_DATA);
+        data = ps2_read(PS2_DATA);
     } 
     if (data == 0xF0)
     {
         released = 1;
-        data = io_in(PS2_DATA);
+        data = ps2_read(PS2_DATA);
     }
+
     uint8_t pos = e ? keymap->emap[data] : keymap->normal[data];
-    if (released)
-        bit_field_unset_bit(keystat, pos);
-    else
-        bit_field_set_bit(keystat, pos);
+    if (data != SHIFT) 
+    {
+        if (released)
+            bit_field_unset_bit(keystat, pos);
+        else
+            bit_field_set_bit(keystat, pos);
+    } 
+    else 
+    {
+        if (released)
+            bit_field_toggle_bit(keystat, pos);
+    }
     
     char ascii = 0;
     uint8_t shift_pos = keymap->normal[SHIFT];
@@ -52,10 +62,14 @@ void INTERRUPT ps2_keyboard_irq(no_priv_change_frame *stack_frame)
         ascii = (keymap->ascii[pos] >> 8) & 0xFF;
     else
         ascii = keymap->ascii[pos] & 0xFF;
-    curr_event.position = pos;
-    curr_event.released = released;
-    curr_event.ascii = ascii;
-    event_occured = 1;
+    if (ascii && !bit_field_get_bit(keystat, pos))
+    {
+        event_occured = 1;
+        curr_event.position = pos;
+        curr_event.released = released;
+        curr_event.ascii = ascii;
+    }
+
     pic_eoi(1);
 }
 

@@ -131,17 +131,59 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
+graphics_glyph_description *glyph_desc;
+
 static void keyboard_init(cpu_state *state)
 {
     pic_init(0x20, 0x28); 
-    if (!ps2_controller_init()) {
+    graphics_glyph_color color;
+    color.bg_red = 0;
+    color.bg_green = 0;
+    color.bg_blue = 0;
+    color.fg_red = 255;
+    color.fg_blue = 0;
+    color.fg_green = 0;
+    uint8_t stat = ps2_controller_init();
+    if (stat == PS2_NOT_A_KEYBOARD) 
+    {
+        graphics_print_string(glyph_desc, "PS/2 - not a keyboard", 4, 0, &color);
+        kernel_loop();
+    } 
+    else if (stat == PS2_DISABLE_SCAN_FAIL)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - diable scan fail", 4, 0, &color);
         kernel_loop();
     }
+    else if (stat == PS2_CONTROLLER_SELF_TEST_FAIL)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - controller test fail", 4, 0, &color);
+        kernel_loop();
+    }
+    else if (stat == PS2_PORT_TEST_FAILED)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - port test fail", 4, 0, &color);
+        kernel_loop();
+    }
+    else if (stat == PS2_RESET_FAILED)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - device reset fail", 4, 0, &color);
+        kernel_loop();
+    }
+    else if (stat == PS2_IDENTIFY_FAILED)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - identify fail", 4, 0, &color);
+        kernel_loop();
+    }
+    else if (stat == PS2_ENABLE_SCAN_FAIL)
+    {
+        graphics_print_string(glyph_desc, "PS/2 - enable scan fail", 4, 0, &color);
+        kernel_loop();
+    }
+    color.fg_red = 0;
+    color.fg_green = 255;
     ps2_keyboard_init(state->idt, 0x21);
     sti();
 }
-
-graphics_glyph_description *glyph_desc;
 
 int kernel_main(BootInfo *bootInfo) 
 {
@@ -159,7 +201,6 @@ int kernel_main(BootInfo *bootInfo)
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
     glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
-    
     graphics_glyph_color color;
     color.bg_red = 0;
     color.bg_green = 0;
@@ -174,24 +215,60 @@ int kernel_main(BootInfo *bootInfo)
     
     keyboard_init(c_state);
 
+    color.fg_blue = 255;
     uint32_t row, col;
-    row = 5;
+    row = 6;
     col = 0;
     ps2_key_event event;
+    char buff[2];
+    buff[1] = 0;
+    char cursor[2] = "_";
+    char nothing[2] = " ";
+    uint32_t last[200];
+    graphics_print_string(glyph_desc, cursor, row, col, &color);
     while (1)
     {
         ps2_keyboard_get_key(&event);
-        if (event.ascii)
+        if (event.released)
         {
-            char buff[2];
-            buff[0] = event.ascii;
-            buff[1] = 0; 
-            graphics_print_string(glyph_desc, buff, row, col, &color);
-            col++;
-            if (col == 100) {
+            if (event.ascii)
+            {
+                buff[0] = event.ascii;
+                graphics_print_string(glyph_desc, buff, row, col, &color);
+                col++;
+                if (col == 200) 
+                {
+                    if (row < 200)
+                    {
+                        last[row] = 199;
+                        row++;
+                        col = 0;
+                    }
+                    else
+                        col--;
+                }
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
+            }
+            else if (event.code == PS2_KEYBOARD_ENTER)
+            {
+                graphics_print_string(glyph_desc, nothing, row, col, &color);
+                last[row] = col;
                 row++;
                 col = 0;
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
             }
+            else if (event.code == PS2_KEYBOARD_BACKSPACE)
+            {
+                graphics_print_string(glyph_desc, nothing, row, col, &color);
+                if (col > 0)
+                    col--;
+                else if (row > 6)
+                {
+                    row--;
+                    col = last[row];
+                }           
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
+            } 
         }
     }
 

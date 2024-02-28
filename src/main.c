@@ -1,7 +1,9 @@
+#include <acpi/table.h>
 #include <asm/control.h>
 #include <asm/registers.h>
 #include <boot/bootinfo.h>
 #include <cpu/state.h>
+#include <efi/table.h>
 #include <gcc/interrupt.h>
 #include <graphics/framebuffer.h>
 #include <graphics/glyph.h>
@@ -24,6 +26,47 @@ extern char __kernel_data_end[];
 static void kernel_loop()
 {
     while (1);
+}
+
+static void parse_efi_system_table(BootInfo *bootInfo, uint8_t *core_ids, uint8_t *count, uint64_t *apic_addr)
+{
+    uint64_t addr = PAGING_ALIGN(bootInfo->efi_system_table);
+    scratchpad_memory_map(0, addr, 5);
+    EFI_SYSTEM_TABLE *st = (EFI_SYSTEM_TABLE *) PAGING_PAGE_OFFSET(bootInfo->efi_system_table); 
+    EFI_CONFIGURATION_TABLE *cfg = (EFI_CONFIGURATION_TABLE *) PAGING_PAGE_OFFSET(st->ConfigurationTable);
+    EFI_GUID acpi_guid = ACPI_TABLE_GUID;
+    uint64_t root_sys_desc = 0;
+    for (uint64_t i = 0; i < st->NumberOfTableEntries && !root_sys_desc; i++)
+    {
+        if (memeq(&acpi_guid, &cfg->VendorGuid, sizeof(EFI_GUID)))
+            root_sys_desc = (uint64_t) cfg->VendorTable;
+        cfg++;
+    }
+
+    if (root_sys_desc)
+    {
+        addr = PAGING_ALIGN(root_sys_desc);
+        scratchpad_memory_map(0, addr, 1);
+        acpi_rsdp *rsdp = (acpi_rsdp *) PAGING_PAGE_OFFSET(root_sys_desc);
+        if (acpi_validate_rsdp(rsdp))
+        {
+            addr = PAGING_ALIGN(rsdp->rsdtaddress);
+            acpi_rsdt *rsdt = (acpi_rsdt *) PAGING_PAGE_OFFSET(rsdp->rsdtaddress);
+            scratchpad_memory_map(0, addr, 1);
+            if (acpi_validate_rsdt(rsdt))
+            {
+                uint32_t length;
+                uint64_t addr = acpi_1_get_table_pointer(rsdt, ACPI_SIGNATURE_MADT, &length);
+                if (addr)
+                {
+                    uint64_t page_count = get_page_count(length);
+                    scratchpad_memory_map(0, PAGING_ALIGN(addr), page_count);
+                    acpi_madt *madt = (acpi_madt *) PAGING_PAGE_OFFSET(addr);
+                    acpi_madt_get_processors(madt, core_ids, count, apic_addr); 
+                }
+            }
+        }
+    }
 }
 
 static mem_map *init_mem_map(BootInfo *bootInfo, simple_allocator *data_alloc)
@@ -131,9 +174,7 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
-graphics_glyph_description *glyph_desc;
-
-static void keyboard_init(cpu_state *state)
+static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_desc)
 {
     pic_init(0x20, 0x28); 
     graphics_glyph_color color;
@@ -191,8 +232,13 @@ int kernel_main(BootInfo *bootInfo)
     paging_state *p_state = paging_init(get_cr3(), simple_allocator_alloc(data_alloc, sizeof(paging_state)));
     cpu_state *c_state = simple_allocator_alloc(data_alloc, sizeof(cpu_state));
     BootInfo *boot_info = simple_allocator_alloc(data_alloc, sizeof(BootInfo));
+    uint8_t *count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
+    uint64_t *apic_addr = simple_allocator_alloc(data_alloc, sizeof(uint64_t));
+    uint8_t *core_ids = simple_allocator_align(data_alloc, 32 * sizeof(uint8_t));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
+    
+    parse_efi_system_table(bootInfo, core_ids, count, apic_addr);
 
     mem_map *map = init_mem_map(boot_info, data_alloc);
     
@@ -200,7 +246,7 @@ int kernel_main(BootInfo *bootInfo)
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
-    glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
+    graphics_glyph_description *glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
     graphics_glyph_color color;
     color.bg_red = 0;
     color.bg_green = 0;
@@ -213,7 +259,7 @@ int kernel_main(BootInfo *bootInfo)
     graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
     graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
     
-    keyboard_init(c_state);
+    keyboard_init(c_state, glyph_desc);
 
     color.fg_blue = 255;
     uint32_t row, col;

@@ -16,6 +16,7 @@
         "glyph.h": "c",
         "pic.h": "c",
         "controller.h": "c",
-        "keyboard.h": "c"
+        "keyboard.h": "c",
+        "manipulate.h": "c"
     }
 }

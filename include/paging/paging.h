@@ -5,6 +5,8 @@
 #include <paging/state.h>
 
 #define PAGING_PAGE_TABLE_LENGTH 512
+#define PAGING_ALIGN(x) ((uint64_t) (x) & (~(((uint64_t) 1 << PAGING_PAGE_SIZE_EXP) - 1)))
+#define PAGING_PAGE_OFFSET(x) ((uint64_t) (x) & (((uint64_t) 1 << PAGING_PAGE_SIZE_EXP) - 1))
 
 paging_state* paging_init(uint64_t cr3, void *state_location);
 

@@ -1,5 +1,5 @@
-#ifndef MEMORY_EFI_MEMORY_H_INCL
-#define MEMORY_EFI_MEMORY_H_INCL
+#ifndef EFI_MEMORY_H_INCL
+#define EFI_MEMORY_H_INCL
 
 #include <stdint.h>
 

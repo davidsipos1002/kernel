@@ -1,8 +1,8 @@
 #include <memory/memory_map.h>
 
 #include <algorithm/rb_tree.h>
+#include <efi/memory.h>
 #include <gcc/utils.h>
-#include <memory/efi_memory.h>
 #include <memory/manipulate.h>
 #include <paging/paging.h>
 #include <stdbool.h>

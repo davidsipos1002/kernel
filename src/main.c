@@ -23,6 +23,9 @@
 extern char __kernel_data_begin[];
 extern char __kernel_data_end[];
 
+extern char __ap_init_begin[];
+extern char __ap_init_end[];
+
 static void kernel_loop()
 {
     while (1);
@@ -31,7 +34,7 @@ static void kernel_loop()
 static void parse_efi_system_table(BootInfo *bootInfo, uint8_t *core_ids, uint8_t *count, uint64_t *apic_addr)
 {
     uint64_t addr = PAGING_ALIGN(bootInfo->efi_system_table);
-    scratchpad_memory_map(0, addr, 5);
+    scratchpad_memory_map(0, addr, 5, 0);
     EFI_SYSTEM_TABLE *st = (EFI_SYSTEM_TABLE *) PAGING_PAGE_OFFSET(bootInfo->efi_system_table); 
     EFI_CONFIGURATION_TABLE *cfg = (EFI_CONFIGURATION_TABLE *) PAGING_PAGE_OFFSET(st->ConfigurationTable);
     EFI_GUID acpi_guid = ACPI_TABLE_GUID;
@@ -46,13 +49,13 @@ static void parse_efi_system_table(BootInfo *bootInfo, uint8_t *core_ids, uint8_
     if (root_sys_desc)
     {
         addr = PAGING_ALIGN(root_sys_desc);
-        scratchpad_memory_map(0, addr, 1);
+        scratchpad_memory_map(0, addr, 1, 0);
         acpi_rsdp *rsdp = (acpi_rsdp *) PAGING_PAGE_OFFSET(root_sys_desc);
         if (acpi_validate_rsdp(rsdp))
         {
             addr = PAGING_ALIGN(rsdp->rsdtaddress);
             acpi_rsdt *rsdt = (acpi_rsdt *) PAGING_PAGE_OFFSET(rsdp->rsdtaddress);
-            scratchpad_memory_map(0, addr, 1);
+            scratchpad_memory_map(0, addr, 1, 0);
             if (acpi_validate_rsdt(rsdt))
             {
                 uint32_t length;
@@ -60,7 +63,7 @@ static void parse_efi_system_table(BootInfo *bootInfo, uint8_t *core_ids, uint8_
                 if (addr)
                 {
                     uint64_t page_count = get_page_count(length);
-                    scratchpad_memory_map(0, PAGING_ALIGN(addr), page_count);
+                    scratchpad_memory_map(0, PAGING_ALIGN(addr), page_count, 0);
                     acpi_madt *madt = (acpi_madt *) PAGING_PAGE_OFFSET(addr);
                     acpi_madt_get_processors(madt, core_ids, count, apic_addr); 
                 }
@@ -89,7 +92,7 @@ BootInfo *boot;
 
 void double_except()
 {
-    scratchpad_memory_map(0, boot->framebuffer.base, 1);
+    scratchpad_memory_map(0, boot->framebuffer.base, 1, 0);
     uint32_t *p = 0;
     for (uint32_t i = 0;i < 100;i++) {
         *p = 0xFF0000;
@@ -100,7 +103,7 @@ void double_except()
 
 void INTERRUPT page_fault(no_priv_change_frame *frame, uint64_t error_code)
 {
-    scratchpad_memory_map(0, boot->framebuffer.base, 1);
+    scratchpad_memory_map(0, boot->framebuffer.base, 1, 0);
     uint32_t *p = 0;
     for (uint64_t i = 0;i < 100; i++) {
         *p = 0xFF;
@@ -136,7 +139,7 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     }
     if (!addr)
         kernel_loop();
-    scratchpad_memory_map(0, (uint64_t) addr, 4);
+    scratchpad_memory_map(0, (uint64_t) addr, 4, 0);
 
     segment_fill_gdt(state);
     segment_set_gdt(state);
@@ -148,6 +151,31 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     
     idt_register_handler(state->idt, 8, double_except, 1, 0, 0);
     idt_register_handler(state->idt, 14, (idt_handler) page_fault, 1, 0, 0);
+}
+
+static uint8_t place_ap_init_code(mem_map *map)
+{
+    const uint64_t mask = 0xFF000;
+    const uint64_t mask1 = ~0xFFFFF;
+    uint64_t addr = 0;
+    for (uint64_t i = 0; i < map->length; i++)
+    {
+        mem_region *reg = &map->map[i];
+        uint64_t length = ((reg->end - reg->start) >> PAGING_PAGE_SIZE_EXP) + 1;
+        if (length > 1 && !(reg->start & mask1))
+        {
+            addr = reg->start;
+            reg->start += PAGING_PAGE_SIZE;
+        }
+    }
+    if (!addr)
+        return 0; 
+    uint64_t size = __ap_init_end - __ap_init_end;
+    scratchpad_memory_map(0, addr, 1, 0);
+    memset(0, 0, PAGING_PAGE_SIZE);
+    memcpy(0, __ap_init_begin, size);
+    
+    return (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
 }
 
 static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_allocator *data_alloc)
@@ -172,6 +200,11 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     desc->width = *((uint8_t *) desc->glyph_vaddr);
     desc->height = *((uint8_t *) desc->glyph_vaddr + 1);
     return desc;
+}
+
+static void start_ap_cores(uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
+{
+
 }
 
 static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_desc)
@@ -232,15 +265,17 @@ int kernel_main(BootInfo *bootInfo)
     paging_state *p_state = paging_init(get_cr3(), simple_allocator_alloc(data_alloc, sizeof(paging_state)));
     cpu_state *c_state = simple_allocator_alloc(data_alloc, sizeof(cpu_state));
     BootInfo *boot_info = simple_allocator_alloc(data_alloc, sizeof(BootInfo));
-    uint8_t *count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
+    uint8_t *core_count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
     uint64_t *apic_addr = simple_allocator_alloc(data_alloc, sizeof(uint64_t));
     uint8_t *core_ids = simple_allocator_align(data_alloc, 32 * sizeof(uint8_t));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
     
-    parse_efi_system_table(bootInfo, core_ids, count, apic_addr);
+    parse_efi_system_table(bootInfo, core_ids, core_count, apic_addr);
 
     mem_map *map = init_mem_map(boot_info, data_alloc);
+    
+    uint8_t ap_vector = place_ap_init_code(map);
     
     init_cpu_state(map, c_state);
 
@@ -256,14 +291,21 @@ int kernel_main(BootInfo *bootInfo)
     color.fg_green = 255;
     graphics_print_string(glyph_desc, "Welcome to SipOS!", 0, 0, &color);
     color.fg_red = 255;
+    color.fg_blue = 255;
     graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
     graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
+    char buffer[3];
+    buffer[0] = '0' + (*core_count / 10);
+    buffer[1] = '0' + (*core_count % 10);
+    buffer[2] = '\0';
+    graphics_print_string(glyph_desc, "Cores discovered through ACPI MADT:", 4, 0, &color);
+    graphics_print_string(glyph_desc, buffer, 5, 0, &color);
     
     keyboard_init(c_state, glyph_desc);
 
     color.fg_blue = 255;
     uint32_t row, col;
-    row = 6;
+    row = 7;
     col = 0;
     ps2_key_event event;
     char buff[2];

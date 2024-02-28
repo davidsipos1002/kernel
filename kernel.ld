@@ -25,6 +25,13 @@ SECTIONS
 		*(.data)
 	}
 	__data_end = . ;
+
+	__ap_init_begin = . ;
+	.ap_init BLOCK(4K) :
+	{
+		*(.ap_init)
+	}
+	__ap_init_end = . ;
  
 	__bss_begin = . ;
 	.bss BLOCK(4K) :

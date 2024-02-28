@@ -5,7 +5,6 @@
 #include <asm/io.h>
 #include <gcc/interrupt.h>
 #include <gcc/utils.h>
-#include <graphics/print.h>
 #include <interrupt/idt.h>
 #include <interrupt/pic.h>
 #include <memory/manipulate.h>

@@ -154,7 +154,7 @@ static uint64_t map_buddy_area(uint64_t vaddr, uint64_t buddy_size, free_regs *r
     while(buddy_size)
     {
         addr = get_free_pages(regs, free_ndx, buddy_size, &got);
-        scratchpad_memory_map(vaddr, addr, got);
+        scratchpad_memory_map(vaddr, addr, got, 0);
         vaddr += got * PAGING_PAGE_SIZE;
         buddy_size -= got;
     }

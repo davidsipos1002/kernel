@@ -10,7 +10,7 @@
 
 paging_state* paging_init(uint64_t cr3, void *state_location);
 
-void scratchpad_memory_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t page_count);
+void scratchpad_memory_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t page_count, uint8_t pat);
 void scratchpad_add_page_table(uint64_t pml4_index, uint64_t pdpt_index, uint64_t pd_index, uint64_t addr);
 void scratchpad_add_page_directory(uint64_t pml4_index, uint64_t pdpt_index, uint64_t addr);
 void scratchpad_add_page_directory_pointer_table(uint64_t pml4_index, uint64_t addr);

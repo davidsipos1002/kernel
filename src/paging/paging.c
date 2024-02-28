@@ -93,7 +93,7 @@ static inline void* get_pte_address(uint64_t pml4e, uint64_t pdpte, uint64_t pde
         (pdpte << PAGING_PD_INDEX_SHIFT) | (pde << PAGING_PT_INDEX_SHIFT) | (pte << 3));
 }
 
-void scratchpad_memory_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t page_count)
+void scratchpad_memory_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t page_count, uint8_t pat)
 {
     for (uint64_t i = 0; i < page_count; i++)
     {   
@@ -103,6 +103,9 @@ void scratchpad_memory_map(uint64_t virt_addr, uint64_t phys_addr, uint64_t page
         memset(entry, 0, 8);
         entry->p = 1;
         entry->r_w = 1;
+        entry->pwt = (pat & 0x1) != 0;
+        entry->pcd = (pat & 0x2) != 0;
+        entry->pat = (pat & 0x4) != 0;
         entry->address = phys_addr >> 12;
         entry->xd = 1;
         invlpg((void *) virt_addr);

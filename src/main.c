@@ -8,6 +8,7 @@
 #include <graphics/framebuffer.h>
 #include <graphics/glyph.h>
 #include <graphics/print.h>
+#include <interrupt/apic.h>
 #include <interrupt/idt.h>
 #include <interrupt/pic.h>
 #include <memory/manipulate.h>
@@ -170,12 +171,18 @@ static uint8_t place_ap_init_code(mem_map *map)
     }
     if (!addr)
         return 0; 
-    uint64_t size = __ap_init_end - __ap_init_end;
+    uint64_t size = (uint8_t *) __ap_init_end - (uint8_t *) __ap_init_begin;
     scratchpad_memory_map(0, addr, 1, 0);
     memset(0, 0, PAGING_PAGE_SIZE);
-    memcpy(0, __ap_init_begin, size);
+    memcpy(0, (void *) __ap_init_begin, size);
     
-    return (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
+    uint8_t vector = (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
+
+    uint8_t *ap_init = (uint8_t *) 0;
+    ap_init[3] = vector;
+    ap_init[10] = vector;
+
+    return vector;
 }
 
 static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_allocator *data_alloc)
@@ -202,9 +209,27 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
-static void start_ap_cores(uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
+static void start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
 {
+    scratchpad_memory_map(0x4000, apic_addr, 1, 3);
+    pic_disable();
 
+    uint64_t apic_msr = get_msr(0x1B);
+    apic_msr;
+    uint8_t apic_id = apic_get_id();
+    apic_mask_all(0x4000);
+    apic_enable(0x4000);
+
+    for (uint8_t i = 0; i < count; i++)
+    {
+        if (core_ids[i] == apic_id)
+            continue; 
+        apic_send_ipi(0x4000, core_ids[i], APIC_INIT_IPI, 0);
+        apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+        apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+    }
+    
+    apic_disable(0x4000);
 }
 
 static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_desc)
@@ -267,7 +292,7 @@ int kernel_main(BootInfo *bootInfo)
     BootInfo *boot_info = simple_allocator_alloc(data_alloc, sizeof(BootInfo));
     uint8_t *core_count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
     uint64_t *apic_addr = simple_allocator_alloc(data_alloc, sizeof(uint64_t));
-    uint8_t *core_ids = simple_allocator_align(data_alloc, 32 * sizeof(uint8_t));
+    uint8_t *core_ids = simple_allocator_alloc(data_alloc, 32 * sizeof(uint8_t));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
     
@@ -276,8 +301,10 @@ int kernel_main(BootInfo *bootInfo)
     mem_map *map = init_mem_map(boot_info, data_alloc);
     
     uint8_t ap_vector = place_ap_init_code(map);
-    
+     
     init_cpu_state(map, c_state);
+
+    start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr);
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
@@ -291,9 +318,9 @@ int kernel_main(BootInfo *bootInfo)
     color.fg_green = 255;
     graphics_print_string(glyph_desc, "Welcome to SipOS!", 0, 0, &color);
     color.fg_red = 255;
-    color.fg_blue = 255;
     graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
     graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
+    color.fg_blue = 255;
     char buffer[3];
     buffer[0] = '0' + (*core_count / 10);
     buffer[1] = '0' + (*core_count % 10);

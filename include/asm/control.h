@@ -9,5 +9,6 @@ void ltr(uint16_t selector);
 void lidt(void *base, uint16_t limit);
 void cli();
 void sti();
+void pause();
 
 #endif

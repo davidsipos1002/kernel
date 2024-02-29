@@ -51,3 +51,11 @@ void sti()
         :
         : "memory");
 }
+
+void pause()
+{
+    __asm__ __volatile__ ("pause"
+        :
+        :
+        : "memory");
+}

@@ -7,13 +7,12 @@
 
 __ap_init_begin:
     cli
-    mov $0x0000, %ax
+    mov %cs, %ax
     mov %ax, %ds
-    ljmp $0x0000, $(ap_ljmp - __ap_init_begin) 
 ap_ljmp:
-    mov $10, %ebx
-    mov $(ap_ljmp - __ap_init_begin), %ax
-    jmp *%ax
+    mov $(ap_count - __ap_init_begin), %bx
+    addb $1, %ds:(%bx)
     hlt
-
+ap_count:
+   .skip 1
 __ap_init_end:

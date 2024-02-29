@@ -28,5 +28,6 @@ void apic_enable(uint64_t apic_base);
 void apic_disable(uint64_t apic_base); 
 void apic_mask_all(uint64_t apic_base);
 void apic_send_ipi(uint64_t apic_base, uint8_t destination, uint8_t type, uint8_t vector); 
+void apic_ipi_wait(uint64_t apic_base);
 
 #endif

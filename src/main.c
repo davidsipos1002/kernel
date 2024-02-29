@@ -1,5 +1,6 @@
 #include <acpi/table.h>
 #include <asm/control.h>
+#include <asm/io.h>
 #include <asm/registers.h>
 #include <boot/bootinfo.h>
 #include <cpu/state.h>
@@ -30,6 +31,17 @@ extern char __ap_init_end[];
 static void kernel_loop()
 {
     while (1);
+}
+
+static inline void ALWAYS_INLINE getbuff(char *buff, uint8_t data)
+{
+    buff[0] = '0';
+    buff[1] = 'x';
+    uint8_t first = (data >> 4) & 0xF;
+    uint8_t second = data & 0xF;
+    buff[2] = first >= 10 ? ('A' + first - 10) : ('0' + first);
+    buff[3] = second >= 10 ? ('A' + second - 10) : ('0' + second);
+    buff[4] = '\0';
 }
 
 static void parse_efi_system_table(BootInfo *bootInfo, uint8_t *core_ids, uint8_t *count, uint64_t *apic_addr)
@@ -162,11 +174,10 @@ static uint8_t place_ap_init_code(mem_map *map)
     for (uint64_t i = 0; i < map->length; i++)
     {
         mem_region *reg = &map->map[i];
-        uint64_t length = ((reg->end - reg->start) >> PAGING_PAGE_SIZE_EXP) + 1;
-        if (length > 1 && !(reg->start & mask1))
+        if (reg->start < 0x100000)
         {
             addr = reg->start;
-            reg->start += PAGING_PAGE_SIZE;
+            break;
         }
     }
     if (!addr)
@@ -176,13 +187,7 @@ static uint8_t place_ap_init_code(mem_map *map)
     memset(0, 0, PAGING_PAGE_SIZE);
     memcpy(0, (void *) __ap_init_begin, size);
     
-    uint8_t vector = (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
-
-    uint8_t *ap_init = (uint8_t *) 0;
-    ap_init[3] = vector;
-    ap_init[10] = vector;
-
-    return vector;
+    return (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
 }
 
 static page_allocator *init_page_alloc(BootInfo *bootInfo, mem_map *map, simple_allocator *data_alloc)
@@ -209,27 +214,42 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
-static void start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
+static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
 {
     scratchpad_memory_map(0x4000, apic_addr, 1, 3);
     pic_disable();
 
-    uint64_t apic_msr = get_msr(0x1B);
-    apic_msr;
     uint8_t apic_id = apic_get_id();
     apic_mask_all(0x4000);
     apic_enable(0x4000);
 
+    uint64_t size = __ap_init_end - __ap_init_begin;
+    scratchpad_memory_map(0x5000, (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP, 1, 3);
+    volatile uint8_t *addr = (volatile uint8_t *)  (0x5000 + size - 1);
+    *addr = 0;
+    uint8_t prev = *addr;
     for (uint8_t i = 0; i < count; i++)
     {
         if (core_ids[i] == apic_id)
             continue; 
         apic_send_ipi(0x4000, core_ids[i], APIC_INIT_IPI, 0);
+        apic_ipi_wait(0x4000);
+        for (uint16_t j = 0; j < 10000; j++)
+            io_wait();
         apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
-        apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+        apic_ipi_wait(0x4000);
+        for (uint16_t j = 0; j < 10000; j++)
+            io_wait();
+        if (*addr == prev) {
+            apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+            apic_ipi_wait(0x4000);
+            for (uint16_t j = 0; j < 10000; j++)
+                io_wait();
+        }
+        prev = *addr;
     }
     
-    apic_disable(0x4000);
+    return prev;
 }
 
 static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_desc)
@@ -304,7 +324,7 @@ int kernel_main(BootInfo *bootInfo)
      
     init_cpu_state(map, c_state);
 
-    start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr);
+    uint8_t ok = start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr);
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
@@ -321,18 +341,20 @@ int kernel_main(BootInfo *bootInfo)
     graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
     graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
     color.fg_blue = 255;
-    char buffer[3];
-    buffer[0] = '0' + (*core_count / 10);
-    buffer[1] = '0' + (*core_count % 10);
-    buffer[2] = '\0';
+    char buffer[10];
+    getbuff(buffer, *core_count);
     graphics_print_string(glyph_desc, "Cores discovered through ACPI MADT:", 4, 0, &color);
     graphics_print_string(glyph_desc, buffer, 5, 0, &color);
+
+    getbuff(buffer, ok);
+    graphics_print_string(glyph_desc, "Cores activated:", 6, 0, &color);
+    graphics_print_string(glyph_desc, buffer, 7, 0, &color);
     
     keyboard_init(c_state, glyph_desc);
 
     color.fg_blue = 255;
     uint32_t row, col;
-    row = 7;
+    row = 10;
     col = 0;
     ps2_key_event event;
     char buff[2];
@@ -377,7 +399,7 @@ int kernel_main(BootInfo *bootInfo)
                 graphics_print_string(glyph_desc, nothing, row, col, &color);
                 if (col > 0)
                     col--;
-                else if (row > 6)
+                else if (row > 9)
                 {
                     row--;
                     col = last[row];

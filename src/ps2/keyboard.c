@@ -24,17 +24,6 @@ static uint8_t keystat[32];
 static uint8_t event_occured;
 static ps2_key_event curr_event;
 
-static inline void ALWAYS_INLINE getbuff(char *buff, uint8_t data)
-{
-    buff[0] = '0';
-    buff[1] = 'x';
-    uint8_t first = (data >> 4) & 0xF;
-    uint8_t second = data & 0xF;
-    buff[2] = first >= 10 ? ('A' + first - 10) : ('0' + first);
-    buff[3] = second >= 10 ? ('A' + second - 10) : ('0' + second);
-    buff[4] = '\0';
-}
-
 void INTERRUPT ps2_keyboard_irq(no_priv_change_frame *stack_frame)
 {
     uint8_t data = io_in(PS2_DATA);

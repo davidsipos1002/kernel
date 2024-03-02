@@ -121,7 +121,7 @@ static uint64_t get_free_pages(free_regs *regs, uint64_t *ndx, uint64_t count, u
 static inline void ALWAYS_INLINE prepare_page_tables(uint64_t pd_count, uint64_t pt_count, free_regs *regs, uint64_t *free_ndx)
 {
     uint64_t got = 0;
-    uint64_t pdpt_ndx = 1;
+    uint64_t pdpt_ndx = 5;
     uint64_t pd_ndx = 0;
     uint64_t addr = 0;
     while(pd_count)
@@ -132,7 +132,7 @@ static inline void ALWAYS_INLINE prepare_page_tables(uint64_t pd_count, uint64_t
         pdpt_ndx++;
     } 
     
-    pdpt_ndx = 1;
+    pdpt_ndx = 5;
     while (pt_count)
     {
         addr = get_free_pages(regs, free_ndx, 1, &got);
@@ -163,7 +163,7 @@ static uint64_t map_buddy_area(uint64_t vaddr, uint64_t buddy_size, free_regs *r
 
 static uint64_t init_buddies(mem_map *map, simple_allocator *alloc, free_regs *regs, uint64_t *free_ndx, buddy_allocator ***buddies, uint64_t *buddy_count)
 {
-    uint64_t vaddr = paging_get_virtual_address(0, 1, 0, 0);
+    uint64_t vaddr = paging_get_virtual_address(0, 5, 0, 0);
     uint64_t buddy_ndx = 0;
     for (uint64_t i = 0; i < map->length; i++)
         if (map->map[i].start < map->map[i].end)
@@ -300,6 +300,7 @@ page_allocator *page_allocator_init(mem_map *map, simple_allocator *alloc)
     uint64_t struct_size = sizeof(page_allocator) + 
         sizeof(page_allocator_buddy) * buddy_count + sizeof(page_allocator_region) * (free_reg_count + 1);
 
+    pd_count = 5 + pd_count - 1; 
     prepare_page_alloc_struct_area(struct_size, addr, &regs, &free_ndx, buddies[0], pd_count);
 
     page_alloc_struct_fill(addr, buddies, buddy_count, &regs);

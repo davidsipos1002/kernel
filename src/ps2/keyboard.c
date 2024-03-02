@@ -10,7 +10,7 @@
 #include <memory/manipulate.h>
 #include <ps2/controller.h>
 
-#define KEYMAP_ADDR 0x18FFD000
+#define KEYMAP_ADDR 0x1F3FF000
 typedef struct
 {
     uint8_t normal[256];

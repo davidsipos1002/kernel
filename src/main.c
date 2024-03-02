@@ -128,11 +128,17 @@ void INTERRUPT page_fault(no_priv_change_frame *frame, uint64_t error_code)
 static void init_cpu_state(mem_map *map, cpu_state *state)
 {
     memset(state, 0, sizeof(cpu_state));
-    state->gdt = (void *) 128;
-    state->tss = (void *) 256;
-    state->idt = (void *) 0x1000;
-    state->ist_count = 1; 
-    state->ist[0] = 0x2000;
+    state->gdt = (void *) 0x100080;
+    state->tss = (void *) 0x100100;
+    state->idt = (void *) 0x101000;
+    state->ist_count = 7; 
+    state->ist[0] = 0x102000;
+    state->ist[1] = 0x104000;
+    state->ist[2] = 0x106000;
+    state->ist[3] = 0x108000;
+    state->ist[4] = 0x10A000;
+    state->ist[5] = 0x10C000;
+    state->ist[6] = 0x10E000;
     state->io_map_base = sizeof(task_state_segment);
 
     uint64_t flags = get_rflags();
@@ -144,15 +150,15 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     {
         mem_region *reg = &map->map[i];
         uint64_t length = ((reg->end - reg->start) >> PAGING_PAGE_SIZE_EXP) + 1;
-        if (length > 4) {
+        if (length > 16) {
             addr = (void *) reg->start;
-            reg->start += 4 * PAGING_PAGE_SIZE;
+            reg->start += 16 * PAGING_PAGE_SIZE;
             break;
         }
     }
     if (!addr)
         kernel_loop();
-    scratchpad_memory_map(0, (uint64_t) addr, 4, 0);
+    scratchpad_memory_map(0x100000, (uint64_t) addr, 16, 0);
 
     segment_fill_gdt(state);
     segment_set_gdt(state);
@@ -166,10 +172,18 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     idt_register_handler(state->idt, 14, (idt_handler) page_fault, 1, 0, 0);
 }
 
+typedef struct
+{
+    uint64_t cr3;
+    uint8_t gdt[10];
+    uint8_t idt[10];
+    uint16_t tss;
+    uint8_t count;
+} PACKED_STRUCT ap_init_s;
+
 static uint8_t place_ap_init_code(mem_map *map)
 {
     const uint64_t mask = 0xFF000;
-    const uint64_t mask1 = ~0xFFFFF;
     uint64_t addr = 0;
     for (uint64_t i = 0; i < map->length; i++)
     {
@@ -186,7 +200,7 @@ static uint8_t place_ap_init_code(mem_map *map)
     scratchpad_memory_map(0, addr, 1, 0);
     memset(0, 0, PAGING_PAGE_SIZE);
     memcpy(0, (void *) __ap_init_begin, size);
-    
+
     return (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
 }
 
@@ -208,7 +222,7 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
 {
     graphics_glyph_description *desc = simple_allocator_alloc(data_alloc, sizeof(graphics_glyph_description));
     graphics_framebuffer_init(bootInfo, &desc->framebuffer, page_alloc); 
-    desc->glyph_vaddr = 0x18FFE000; 
+    desc->glyph_vaddr = 0x1F3FE000;
     desc->width = *((uint8_t *) desc->glyph_vaddr);
     desc->height = *((uint8_t *) desc->glyph_vaddr + 1);
     return desc;
@@ -216,37 +230,43 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
 
 static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
 {
-    scratchpad_memory_map(0x4000, apic_addr, 1, 3);
+    scratchpad_memory_map(0x110000, apic_addr, 1, 3);
     pic_disable();
 
     uint8_t apic_id = apic_get_id();
-    apic_mask_all(0x4000);
-    apic_enable(0x4000);
+    apic_mask_all(0x110000);
+    apic_enable(0x110000);
 
     uint64_t size = __ap_init_end - __ap_init_begin;
-    scratchpad_memory_map(0x5000, (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP, 1, 3);
-    volatile uint8_t *addr = (volatile uint8_t *)  (0x5000 + size - 1);
-    *addr = 0;
-    uint8_t prev = *addr;
+    uint64_t ap_init_code = (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP;
+    scratchpad_memory_map(ap_init_code, ap_init_code, 1, 0);
+    scratchpad_memory_map(0x111000, ap_init_code, 1, 3);
+    volatile ap_init_s *ap_init = (volatile ap_init_s *) (0x111000 + size - sizeof(ap_init_s));
+    ap_init->cr3 = get_cr3();
+    sgdt(ap_init->gdt);
+    sidt(ap_init->idt);
+    ap_init->tss = str();
+    ap_init->count = 0;
+    uint8_t prev = ap_init->count;
     for (uint8_t i = 0; i < count; i++)
     {
         if (core_ids[i] == apic_id)
             continue; 
-        apic_send_ipi(0x4000, core_ids[i], APIC_INIT_IPI, 0);
-        apic_ipi_wait(0x4000);
+        apic_send_ipi(0x110000, core_ids[i], APIC_INIT_IPI, 0);
+        apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
             io_wait();
-        apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
-        apic_ipi_wait(0x4000);
+        apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+        apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
             io_wait();
-        if (*addr == prev) {
-            apic_send_ipi(0x4000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
-            apic_ipi_wait(0x4000);
+        if (ap_init->count == prev) {
+            apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
+            apic_ipi_wait(0x110000);
             for (uint16_t j = 0; j < 10000; j++)
                 io_wait();
         }
-        prev = *addr;
+        prev = ap_init->count;
     }
     
     return prev;

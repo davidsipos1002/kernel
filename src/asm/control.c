@@ -36,6 +36,32 @@ void lidt(void *base, uint16_t limit)
         : "memory");
 }
 
+void sgdt(volatile void *addr)
+{
+    __asm__ __volatile__ ("sgdt (%0)"
+        :
+        : "r"(addr)
+        : "memory");
+}
+
+void sidt(volatile void *addr)
+{
+    __asm__ __volatile__ ("sidt (%0)"
+        :
+        : "r"(addr)
+        : "memory");
+}
+
+uint16_t str()
+{
+    uint16_t ret;
+    __asm__ __volatile__ ("str %0"
+        : "=r" (ret)
+        :
+        : "memory");
+    return ret;
+}
+
 void cli()
 {
     __asm__ __volatile__ ("cli"

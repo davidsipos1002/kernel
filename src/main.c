@@ -27,6 +27,13 @@ extern char __kernel_data_end[];
 
 extern char __ap_init_begin[];
 extern char __ap_init_end[];
+extern char __ap_ljmp_instr[];
+extern char __ap_init_ljmp[];
+extern char __ap_init_gdt[];
+extern char __ap_init_gdtr[];
+extern char __ap_init_protected[];
+extern char __ap_absljmp_instr[];
+extern char __ap_absljmp[];
 
 static void kernel_loop()
 {
@@ -125,6 +132,17 @@ void INTERRUPT page_fault(no_priv_change_frame *frame, uint64_t error_code)
     kernel_loop();
 }
 
+void INTERRUPT general_protection(no_priv_change_frame *frame, uint64_t error_code)
+{
+    scratchpad_memory_map(0, boot->framebuffer.base, 1, 0);
+    uint32_t *p = 0;
+    for (uint64_t i = 0;i < 100; i++) {
+        *p = 0xFF00FF;
+        p++;
+    }
+    kernel_loop();
+}
+
 static void init_cpu_state(mem_map *map, cpu_state *state)
 {
     memset(state, 0, sizeof(cpu_state));
@@ -132,13 +150,13 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     state->tss = (void *) 0x100100;
     state->idt = (void *) 0x101000;
     state->ist_count = 7; 
-    state->ist[0] = 0x102000;
-    state->ist[1] = 0x104000;
-    state->ist[2] = 0x106000;
-    state->ist[3] = 0x108000;
-    state->ist[4] = 0x10A000;
-    state->ist[5] = 0x10C000;
-    state->ist[6] = 0x10E000;
+    state->ist[0] = 0x104000;
+    state->ist[1] = 0x106000;
+    state->ist[2] = 0x108000;
+    state->ist[3] = 0x10A000;
+    state->ist[4] = 0x10C000;
+    state->ist[5] = 0x10D000;
+    state->ist[6] = 0x10F000;
     state->io_map_base = sizeof(task_state_segment);
 
     uint64_t flags = get_rflags();
@@ -168,16 +186,19 @@ static void init_cpu_state(mem_map *map, cpu_state *state)
     memset(state->idt, 0, PAGING_PAGE_SIZE);
     lidt(state->idt, PAGING_PAGE_SIZE - 1); 
     
-    idt_register_handler(state->idt, 8, double_except, 1, 0, 0);
+    idt_register_handler(state->idt, 8, double_except, 2, 0, 0);
+    idt_register_handler(state->idt, 13, (idt_handler) general_protection, 2, 0, 0);
     idt_register_handler(state->idt, 14, (idt_handler) page_fault, 1, 0, 0);
 }
 
 typedef struct
 {
-    uint64_t cr3;
+    uint32_t cr3;
     uint8_t gdt[10];
     uint8_t idt[10];
-    uint16_t tss;
+    uint64_t rsp;
+    uint32_t vector;
+    uint32_t ap_test;
     uint8_t count;
 } PACKED_STRUCT ap_init_s;
 
@@ -201,6 +222,14 @@ static uint8_t place_ap_init_code(mem_map *map)
     memset(0, 0, PAGING_PAGE_SIZE);
     memcpy(0, (void *) __ap_init_begin, size);
 
+    uint32_t *gdt_base = (uint32_t *) (__ap_init_gdtr - __ap_init_begin + 2);
+    *gdt_base = addr + __ap_init_gdt - __ap_init_begin;
+    
+    uint16_t *ljmp = (uint16_t *) (__ap_ljmp_instr - __ap_init_begin + 1);
+    *ljmp = __ap_init_ljmp - __ap_init_begin;
+    
+    uint32_t *absljmp = (uint32_t *) (__ap_absljmp_instr - __ap_init_begin + 1);
+    *absljmp = addr + __ap_absljmp - __ap_init_begin;
     return (uint8_t) ((addr & mask) >> PAGING_PAGE_SIZE_EXP);
 }
 
@@ -228,7 +257,7 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
-static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr)
+static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr, void *ap_stacks)
 {
     scratchpad_memory_map(0x110000, apic_addr, 1, 3);
     pic_disable();
@@ -239,33 +268,39 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
 
     uint64_t size = __ap_init_end - __ap_init_begin;
     uint64_t ap_init_code = (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP;
-    scratchpad_memory_map(ap_init_code, ap_init_code, 1, 0);
-    scratchpad_memory_map(0x111000, ap_init_code, 1, 3);
+    scratchpad_memory_map(0x111000, ap_init_code, 1, 0);
     volatile ap_init_s *ap_init = (volatile ap_init_s *) (0x111000 + size - sizeof(ap_init_s));
-    ap_init->cr3 = get_cr3();
-    sgdt(ap_init->gdt);
-    sidt(ap_init->idt);
-    ap_init->tss = str();
     ap_init->count = 0;
-    uint8_t prev = ap_init->count;
+    ap_init->vector = (uint32_t) ap_vector << PAGING_PAGE_SIZE_EXP;
+    ap_init->ap_test = 0;
+    uint8_t prev = 0;
+    uint64_t exec_base = (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP;
     for (uint8_t i = 0; i < count; i++)
     {
         if (core_ids[i] == apic_id)
             continue; 
+        segment_descriptor *desc = (segment_descriptor *) (__ap_init_gdt - __ap_init_begin);
+        desc++;
+        desc->base_0 = exec_base & 0xFFFF;
+        desc->base_1 = (exec_base >> 16) & 0xF;
+        desc++;
+        desc->base_0 = exec_base & 0xFFFF;
+        desc->base_1 = (exec_base >> 16) & 0xF;
+        ap_init->rsp = ((uint64_t) ap_stacks) + 100 * prev * PAGING_PAGE_SIZE;
         apic_send_ipi(0x110000, core_ids[i], APIC_INIT_IPI, 0);
         apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
             io_wait();
         apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
         apic_ipi_wait(0x110000);
-        for (uint16_t j = 0; j < 10000; j++)
+        for (uint16_t j = 0; j < 2000; j++)
             io_wait();
         if (ap_init->count == prev) {
             apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
             apic_ipi_wait(0x110000);
-            for (uint16_t j = 0; j < 10000; j++)
+            for (uint16_t j = 0; j < 2000; j++)
                 io_wait();
-        }
+        }    
         prev = ap_init->count;
     }
     
@@ -333,6 +368,7 @@ int kernel_main(BootInfo *bootInfo)
     uint8_t *core_count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
     uint64_t *apic_addr = simple_allocator_alloc(data_alloc, sizeof(uint64_t));
     uint8_t *core_ids = simple_allocator_alloc(data_alloc, 32 * sizeof(uint8_t));
+    void *ap_stacks = simple_allocator_alloc(data_alloc, 32 * PAGING_PAGE_SIZE * 100);
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
     
@@ -344,7 +380,8 @@ int kernel_main(BootInfo *bootInfo)
      
     init_cpu_state(map, c_state);
 
-    uint8_t ok = start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr);
+    uint8_t ok = 0;
+    ok = start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr, ap_stacks);
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 

@@ -31,7 +31,7 @@ uint8_t memory_map_parse(BootInfo *info, simple_allocator *rb_alloc, simple_allo
     map->addr_map = (uint64_t *) 0;
     map->map = (mem_region *) mem_alloc->addr; 
 
-    scratchpad_memory_map(0, info->memorymap.map, get_page_count(size), 0);
+    scratchpad_memory_map(0, info->memorymap.map, get_page_count(size), 0, 1);
 
     simple_allocator_align(rb_alloc, sizeof(8));
     rb_tree *t = simple_allocator_alloc(rb_alloc, sizeof(rb_tree));
@@ -121,7 +121,7 @@ uint8_t memory_map_construct_map(mem_map *memory_map)
             start_addr = pg_addr; 
             for (uint64_t j = 0; j < page_count;j++)
             {
-                scratchpad_memory_map(j * PAGING_PAGE_SIZE, pg_addr, 1, 0);
+                scratchpad_memory_map(j * PAGING_PAGE_SIZE, pg_addr, 1, 0, 1);
                 pg_addr += PAGING_PAGE_SIZE;
             }
             memory_map->map[i].start = pg_addr;

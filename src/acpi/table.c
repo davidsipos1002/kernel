@@ -36,13 +36,13 @@ uint64_t acpi_1_get_table_pointer(acpi_rsdt *rsdt, const char *signature, uint32
     for (uint32_t i = 0; i < count; i++)
     {
         uint32_t addr = ptrs[i];
-        scratchpad_memory_map(0x1000, PAGING_ALIGN(addr), 1, 0);
+        scratchpad_memory_map(0x1000, PAGING_ALIGN(addr), 1, 0, 1);
         acpi_header *header = (acpi_header *) (0x1000 + PAGING_PAGE_OFFSET(addr));
         if (memeq(header->signature, signature, 4)) {
             *length = header->length; 
             uint64_t page_count = get_page_count(*length);
             if (page_count > 1)
-                scratchpad_memory_map(0x1000, PAGING_ALIGN(addr), page_count, 0);
+                scratchpad_memory_map(0x1000, PAGING_ALIGN(addr), page_count, 0, 1);
             if (acpi_checksum((uint8_t *) header, *length))
                 return addr;
         }

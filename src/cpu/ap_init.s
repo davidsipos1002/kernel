@@ -8,6 +8,8 @@
 .global __ap_init_gdtr
 .global __ap_absljmp_instr
 .global __ap_absljmp
+.global __ap_ljmp64_instr
+.global __ap_ljmp64
 .global __ap_init_protected
 
 .code16
@@ -45,9 +47,38 @@ __ap_absljmp:
     mov $0x18, %ax
     mov %ax, %ds
     
+    mov %cr4, %eax
+    or $0x20, %eax
+    mov %eax, %cr4
+    
+    mov %ecx, %ebx
+    mov $0xC0000080, %ecx
+    rdmsr
+    or $0x100, %eax
+    wrmsr
+    rdmsr
+    mov $(ap_test - __ap_init_begin), %edx
+    add %ebx, %edx
+    mov %eax, (%edx)
+    mov %ebx, %ecx
+    
     mov %ecx, %eax
-    add $(ap_count - __ap_init_begin), %eax
-    addb $1, (%eax)
+    add $(ap_cr3 - __ap_init_begin), %eax 
+    mov (%eax), %ebx
+    mov %ebx, %cr3
+    
+    mov %cr0, %eax
+    or $0x80000000, %eax
+    mov %eax, %cr0
+
+__ap_ljmp64_instr:
+    ljmp $0x20, $0x00000000
+
+.code64
+__ap_ljmp64:
+    mov %rcx, %rax
+    add $(ap_count - __ap_init_begin), %rax
+    addb $1, (%rax)
     hlt
 
 .align 8 // Intel says align at 8-byte boundary
@@ -59,6 +90,8 @@ __ap_init_gdt_data:
     .long 0x0000FFFF, 0x00CF9200 // selector is 0x10
 __ap_init_gdt_data2:
     .long 0x0000FFFF, 0x00CF9200 // selector is 0x18
+__ap_init_gdt_code64:
+    .long 0x0000FFFF, 0x00AF9A00 // selector is 0x20
 
 __ap_init_gdtr:
     .word 0x31 

@@ -87,7 +87,7 @@ void graphics_framebuffer_init(BootInfo *bootInfo, graphics_framebuffer *framebu
     uint64_t addr = alloc_page_tables(framebuffer, alloc, &page_count, &total, &pdp_count, &pd_count, &pt_count);
     
     uint64_t vaddr = prepare_page_tables(addr, pdp_count, pd_count, pt_count);
-    scratchpad_memory_map(vaddr, framebuffer->base, page_count, 6);
+    scratchpad_memory_map(vaddr, framebuffer->base, page_count, 6, 1);
     framebuffer->vaddr = vaddr;
 }
 

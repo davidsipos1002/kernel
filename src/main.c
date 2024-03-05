@@ -200,8 +200,7 @@ typedef struct
     uint8_t idt[10];
     uint64_t rsp;
     uint32_t vector;
-    uint32_t ap_test;
-    uint8_t count;
+    uint64_t count;
 } PACKED_STRUCT ap_init_s;
 
 static uint8_t place_ap_init_code(mem_map *map)
@@ -277,10 +276,10 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
     scratchpad_memory_map(ap_init_code, ap_init_code, 1, 0, 0);
     scratchpad_memory_map(0x111000, ap_init_code, 1, 0, 1);
     volatile ap_init_s *ap_init = (volatile ap_init_s *) (0x111000 + size - sizeof(ap_init_s));
+    volatile uint8_t ap_count = 0;
     ap_init->cr3 = get_cr3();
-    ap_init->count = 0;
+    ap_init->count = (uint64_t) &ap_count;
     ap_init->vector = (uint32_t) ap_vector << PAGING_PAGE_SIZE_EXP;
-    ap_init->ap_test = 0;
     uint8_t prev = 0;
     uint64_t exec_base = (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP;
     for (uint8_t i = 0; i < count; i++)
@@ -294,7 +293,7 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
         desc++;
         desc->base_0 = exec_base & 0xFFFF;
         desc->base_1 = (exec_base >> 16) & 0xF;
-        ap_init->rsp = ((uint64_t) ap_stacks) + 100 * prev * PAGING_PAGE_SIZE;
+        ap_init->rsp = ((uint64_t) ap_stacks) + 100 * (prev + 1) * PAGING_PAGE_SIZE;
         apic_send_ipi(0x110000, core_ids[i], APIC_INIT_IPI, 0);
         apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
@@ -303,17 +302,26 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
         apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
             io_wait();
-        if (ap_init->count == prev) {
+        if (ap_count == prev) {
             apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
             apic_ipi_wait(0x110000);
             for (uint16_t j = 0; j < 10000; j++)
                 io_wait();
         }    
-        prev = ap_init->count;
+        prev = ap_count;
     }
     
     return prev;
 }
+
+void ap_main(uint8_t *ap_count)
+{
+    (*ap_count)++;
+    __asm__ __volatile__ ("hlt"
+        :
+        :
+        : "memory");
+} 
 
 static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_desc)
 {

@@ -250,6 +250,89 @@ uint8_t *core_ids, uint8_t *count, uint8_t *ap_vector, uint64_t *apic_addr, void
     return ret;
 }
 
+void execmd(graphics_glyph_description *glyph_desc, char *buff, int row)
+{
+    graphics_glyph_color color;
+    color.bg_red = color.bg_green = color.bg_blue = 0;
+    if (memeq(buff, "echo ", 5))
+    {
+        color.bg_red = color.bg_green = color.bg_blue = 0;
+        color.fg_red = color.fg_green = color.fg_blue = 255;
+        graphics_print_string(glyph_desc, buff + 5, row, 0, &color);
+        return;
+    }
+    color.fg_red = 255;
+    graphics_print_string(glyph_desc, "Unknown command!", row, 0, &color);
+}
+
+void shell(graphics_glyph_description *glyph_desc)
+{
+    static char cmdbuff[1001];
+    static char empty[1000];
+    static int cmdndx;
+    memset(empty, ' ', 1000);
+    uint32_t row, col;
+    row = 6;
+    col = 2;
+    ps2_key_event event;
+    char buff[2];
+    buff[1] = 0;
+    char cursor[2] = "_";
+    char nothing[2] = " ";
+    graphics_glyph_color color;
+    color.bg_red = color.bg_green = color.bg_blue = 0;
+    color.fg_red = color.fg_green = color.fg_blue = 255;
+    graphics_print_string(glyph_desc, "> ", row, 0, &color);
+    graphics_print_string(glyph_desc, cursor, row, col, &color);
+    while (1)
+    {
+        ps2_keyboard_get_key(&event);
+        if (event.event == 1)
+        {
+            if (event.ascii)
+            {
+                buff[0] = event.ascii;
+                graphics_print_string(glyph_desc, buff, row, col, &color);
+                cmdbuff[cmdndx++] = event.ascii;
+                col++;
+                if (col == 1000) 
+                    col--;
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
+            }
+            else if (event.code == PS2_KEYBOARD_ENTER)
+            {
+                graphics_print_string(glyph_desc, nothing, row, col, &color);
+                cmdbuff[cmdndx] = 0;
+                execmd(glyph_desc, cmdbuff, row + 1);
+                cmdndx = 0;
+                row += 2;
+                col = 2;
+                graphics_print_string(glyph_desc, "> ", row, 0, &color);
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
+            }
+            else if (event.code == PS2_KEYBOARD_BACKSPACE)
+            {
+                cmdndx--;
+                graphics_print_string(glyph_desc, nothing, row, col, &color);
+                if (col > 2)
+                    col--;
+                else if (row > 7)
+                {
+                    graphics_print_string(glyph_desc, "  ", row, 0, &color);
+                    graphics_print_string(glyph_desc, empty, row - 1, 0, &color);
+                    cmdndx = 0;
+                    row -= 2;
+                    graphics_print_string(glyph_desc, empty, row, 0, &color);
+                    graphics_print_string(glyph_desc, "> ", row, 0, &color);
+                    col = 2;
+                }           
+                graphics_print_string(glyph_desc, cursor, row, col, &color);
+            } 
+        }
+    }
+
+}
+
 int kernel_main(BootInfo *bootInfo) 
 {
     simple_allocator *data_alloc = simple_allocator_init((void *) __kernel_data_begin, __kernel_data_end - __kernel_data_begin); 
@@ -279,87 +362,24 @@ int kernel_main(BootInfo *bootInfo)
 
     graphics_glyph_description *glyph_desc = init_graphics(boot_info, page_alloc, data_alloc);
     graphics_glyph_color color;
-    color.bg_red = 0;
-    color.bg_green = 0;
-    color.bg_blue = 0;
-    color.fg_red = 0;
-    color.fg_blue = 0;
+    color.bg_red = color.bg_green = color.bg_blue = 0;
+    color.fg_red = color.fg_blue = 0;
     color.fg_green = 255;
     graphics_print_string(glyph_desc, "Welcome to SipOS!", 0, 0, &color);
     color.fg_red = 255;
-    graphics_print_string(glyph_desc, "How do you get from point A to point B ?", 2, 0, &color);
-    graphics_print_string(glyph_desc, "Easy! Just take an x-y plane or a rhombus.", 3, 0, &color);
-    color.fg_blue = 255;
-    char buffer[10];
+    char buffer[5];
     getbuff(buffer, *core_count);
-    graphics_print_string(glyph_desc, "Cores discovered through ACPI MADT:", 4, 0, &color);
-    graphics_print_string(glyph_desc, buffer, 5, 0, &color);
+    graphics_print_string(glyph_desc, "Cores discovered through ACPI MADT:", 1, 0, &color);
+    graphics_print_string(glyph_desc, buffer, 2, 0, &color);
 
     getbuff(buffer, started);
-    graphics_print_string(glyph_desc, "Cores activated:", 6, 0, &color);
-    graphics_print_string(glyph_desc, buffer, 7, 0, &color);
+    graphics_print_string(glyph_desc, "Cores activated:", 3, 0, &color);
+    graphics_print_string(glyph_desc, buffer, 4, 0, &color);
     
     keyboard_init(c_state, glyph_desc);
+
+    shell(glyph_desc);
     
-    spinlock_release(&core_locks[0]);
-
-    color.fg_blue = 255;
-    uint32_t row, col;
-    row = 10;
-    col = 0;
-    ps2_key_event event;
-    char buff[2];
-    buff[1] = 0;
-    char cursor[2] = "_";
-    char nothing[2] = " ";
-    uint32_t last[200];
-    graphics_print_string(glyph_desc, cursor, row, col, &color);
-    while (1)
-    {
-        ps2_keyboard_get_key(&event);
-        if (event.event == 1)
-        {
-            if (event.ascii)
-            {
-                buff[0] = event.ascii;
-                graphics_print_string(glyph_desc, buff, row, col, &color);
-                col++;
-                if (col == 200) 
-                {
-                    if (row < 200)
-                    {
-                        last[row] = 199;
-                        row++;
-                        col = 0;
-                    }
-                    else
-                        col--;
-                }
-                graphics_print_string(glyph_desc, cursor, row, col, &color);
-            }
-            else if (event.code == PS2_KEYBOARD_ENTER)
-            {
-                graphics_print_string(glyph_desc, nothing, row, col, &color);
-                last[row] = col;
-                row++;
-                col = 0;
-                graphics_print_string(glyph_desc, cursor, row, col, &color);
-            }
-            else if (event.code == PS2_KEYBOARD_BACKSPACE)
-            {
-                graphics_print_string(glyph_desc, nothing, row, col, &color);
-                if (col > 0)
-                    col--;
-                else if (row > 9)
-                {
-                    row--;
-                    col = last[row];
-                }           
-                graphics_print_string(glyph_desc, cursor, row, col, &color);
-            } 
-        }
-    }
-
     kernel_loop();
     return 0;
 }

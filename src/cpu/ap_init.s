@@ -122,7 +122,7 @@ __ap_ljmp64:
     // function argument in the System V ABI
     // we will increment the variable from C code to signal the BSP that we are ready
     mov %rcx, %rax
-    add $(ap_count - __ap_init_begin), %rax
+    add $(ap_param - __ap_init_begin), %rax
     mov (%rax), %rdi
 
     // now, we are in 64-bit mode, we have a stack and a function argument
@@ -161,6 +161,6 @@ ap_rsp:
     .skip 8
 ap_vector:
     .skip 4
-ap_count:
+ap_param:
     .skip 8
 __ap_init_end:

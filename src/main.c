@@ -21,6 +21,7 @@
 #include <ps2/keyboard.h>
 #include <segment/gdt.h>
 #include <segment/tss.h>
+#include <sync/spinlock.h>
 
 extern char __kernel_data_begin[];
 extern char __kernel_data_end[];
@@ -262,7 +263,13 @@ static graphics_glyph_description *init_graphics(BootInfo *bootInfo, page_alloca
     return desc;
 }
 
-static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr, void *ap_stacks)
+typedef struct
+{
+    uint8_t ap_count;
+    spinlock *lock;
+} ap_param;
+
+static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t count, uint64_t apic_addr, void *ap_stacks, spinlock *locks)
 {
     scratchpad_memory_map(0x110000, apic_addr, 1, 3, 1);
     pic_disable();
@@ -276,11 +283,13 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
     scratchpad_memory_map(ap_init_code, ap_init_code, 1, 0, 0);
     scratchpad_memory_map(0x111000, ap_init_code, 1, 0, 1);
     volatile ap_init_s *ap_init = (volatile ap_init_s *) (0x111000 + size - sizeof(ap_init_s));
-    volatile uint8_t ap_count = 0;
+    volatile ap_param param;
+    param.ap_count = 0;
     ap_init->cr3 = get_cr3();
-    ap_init->count = (uint64_t) &ap_count;
+    ap_init->count = (uint64_t) &param;
     ap_init->vector = (uint32_t) ap_vector << PAGING_PAGE_SIZE_EXP;
     uint8_t prev = 0;
+    uint8_t ndx = 0;
     uint64_t exec_base = (uint64_t) ap_vector << PAGING_PAGE_SIZE_EXP;
     for (uint8_t i = 0; i < count; i++)
     {
@@ -294,6 +303,8 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
         desc->base_0 = exec_base & 0xFFFF;
         desc->base_1 = (exec_base >> 16) & 0xF;
         ap_init->rsp = ((uint64_t) ap_stacks) + 100 * (prev + 1) * PAGING_PAGE_SIZE;
+        param.lock = &locks[ndx++];
+        spinlock_lock(param.lock);
         apic_send_ipi(0x110000, core_ids[i], APIC_INIT_IPI, 0);
         apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
@@ -302,21 +313,23 @@ static uint8_t start_ap_cores(uint8_t ap_vector, uint8_t *core_ids, uint8_t coun
         apic_ipi_wait(0x110000);
         for (uint16_t j = 0; j < 10000; j++)
             io_wait();
-        if (ap_count == prev) {
+        if (param.ap_count == prev) {
             apic_send_ipi(0x110000, core_ids[i], APIC_STARTUP_IPI, ap_vector);
             apic_ipi_wait(0x110000);
             for (uint16_t j = 0; j < 10000; j++)
                 io_wait();
         }    
-        prev = ap_count;
+        prev = param.ap_count;
     }
     
     return prev;
 }
 
-void ap_main(uint8_t *ap_count)
+void ap_main(ap_param *param)
 {
-    (*ap_count)++;
+    spinlock *lock = param->lock;
+    param->ap_count++;
+    spinlock_lock(lock);
     __asm__ __volatile__ ("hlt"
         :
         :
@@ -384,7 +397,10 @@ int kernel_main(BootInfo *bootInfo)
     uint8_t *core_count = simple_allocator_alloc(data_alloc, sizeof(uint8_t));
     uint64_t *apic_addr = simple_allocator_alloc(data_alloc, sizeof(uint64_t));
     uint8_t *core_ids = simple_allocator_alloc(data_alloc, 32 * sizeof(uint8_t));
+    simple_allocator_align(data_alloc, 4096);
     void *ap_stacks = simple_allocator_alloc(data_alloc, 32 * PAGING_PAGE_SIZE * 100);
+    spinlock *core_locks = simple_allocator_alloc(data_alloc, 32 * sizeof(spinlock));
+    memset(core_locks, 0, 32 * sizeof(spinlock));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
 
@@ -397,7 +413,7 @@ int kernel_main(BootInfo *bootInfo)
     init_cpu_state(map, c_state, ap_vector);
     
     uint8_t ok = 0;
-    ok = start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr, ap_stacks);
+    ok = start_ap_cores(ap_vector, core_ids, *core_count, *apic_addr, ap_stacks, core_locks);
 
     page_allocator *page_alloc = init_page_alloc(boot_info, map, data_alloc);
 
@@ -424,6 +440,8 @@ int kernel_main(BootInfo *bootInfo)
     graphics_print_string(glyph_desc, buffer, 7, 0, &color);
     
     keyboard_init(c_state, glyph_desc);
+    
+    spinlock_release(&core_locks[0]);
 
     color.fg_blue = 255;
     uint32_t row, col;

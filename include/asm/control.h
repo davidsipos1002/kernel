@@ -13,5 +13,6 @@ uint16_t str();
 void cli();
 void sti();
 void pause();
+void hlt();
 
 #endif

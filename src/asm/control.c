@@ -85,3 +85,11 @@ void pause()
         :
         : "memory");
 }
+
+void hlt()
+{
+    __asm__ __volatile__ ("hlt"
+        :
+        :
+        : "memory");
+}

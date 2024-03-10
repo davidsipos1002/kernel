@@ -216,18 +216,29 @@ static void keyboard_init(cpu_state *state, graphics_glyph_description *glyph_de
     sti();
 }
 
-void ap_start(void *param)
+typedef struct
 {
-    spinlock *lock = (spinlock *) param;
-    spinlock_lock(lock);
-    __asm__ __volatile__ ("hlt"
-        :
-        :
-        : "memory");
+    spinlock *lock;
+    spinlock *done;
+    uint64_t count;
+} ap_param;
+
+void ap_start(void *p)
+{
+    ap_param *param = (ap_param *) p;
+    spinlock *lock = param->lock;
+    spinlock *done = param->done;
+    while(1)
+    {
+        spinlock_lock(lock);
+        param->count++;
+        spinlock_release(done);
+    }
+    hlt();
 }
 
 uint8_t start_cores(BootInfo *bootInfo, simple_allocator *alloc, mem_map *map, 
-uint8_t *core_ids, uint8_t *count, uint8_t *ap_vector, uint64_t *apic_addr, void *ap_stacks, spinlock *locks)
+uint8_t *core_ids, uint8_t *count, uint8_t *ap_vector, uint64_t *apic_addr, void *ap_stacks, spinlock *locks, spinlock *done, ap_param *params)
 {
     parse_efi_system_table(bootInfo, core_ids, count, apic_addr);
     *ap_vector = place_ap_init_code(map);
@@ -242,7 +253,11 @@ uint8_t *core_ids, uint8_t *count, uint8_t *ap_vector, uint64_t *apic_addr, void
         init[ndx].stack = (void *) (((uint64_t) ap_stacks) + 100 * (ndx + 1) * PAGING_PAGE_SIZE);
         init[ndx].start = ap_start;
         spinlock_lock(&locks[ndx]);
-        init[ndx].param = &locks[ndx];
+        spinlock_lock(&done[ndx]);
+        params[ndx].lock = &locks[ndx];
+        params[ndx].done = &done[ndx];
+        params[ndx].count = 0;
+        init[ndx].param = &params[ndx];
         ndx++;
     }
     uint8_t ret = start_ap_cores(*ap_vector, *apic_addr, init, *count);
@@ -250,7 +265,29 @@ uint8_t *core_ids, uint8_t *count, uint8_t *ap_vector, uint64_t *apic_addr, void
     return ret;
 }
 
-void execmd(graphics_glyph_description *glyph_desc, char *buff, int row)
+uint32_t parsenum(char *buff)
+{
+    uint32_t res = 0, count = 0, pow = 1;
+    char *tmp = buff;
+    while('0' <= *tmp && *tmp <= '9')
+    {
+        tmp++;
+        count++;
+    }
+    if (count)
+    {
+        for (uint8_t i = 0; i < count - 1; i++)
+            pow *= 10;
+        for (uint8_t i = 0; i < count; i++)
+        {
+            res += (uint32_t) (buff[i] - '0') * pow;
+            pow /= 10;
+        }
+    }
+    return res;
+}
+
+void execmd(graphics_glyph_description *glyph_desc, char *buff, int row, uint8_t core_count, volatile ap_param *param)
 {
     graphics_glyph_color color;
     color.bg_red = color.bg_green = color.bg_blue = 0;
@@ -261,16 +298,36 @@ void execmd(graphics_glyph_description *glyph_desc, char *buff, int row)
         graphics_print_string(glyph_desc, buff + 5, row, 0, &color);
         return;
     }
+    if (memeq(buff, "ping ", 5))
+    {
+        uint32_t n = parsenum(buff + 5);
+        if (!core_count || n >= core_count - 1)
+        {
+            color.fg_red = 255;
+            graphics_print_string(glyph_desc, "Invalid core!", row, 0, &color);
+        }
+        else
+        { 
+            color.bg_red = color.bg_green = color.bg_blue = 0;
+            color.fg_red = color.fg_green = color.fg_blue = 255;
+            spinlock_release(param[n].lock);
+            spinlock_lock(param[n].done);
+            char cntbuff[5];
+            getbuff(cntbuff, param[n].count);
+            graphics_print_string(glyph_desc, cntbuff, row, 0,&color);
+        }
+        return;
+    }
     color.fg_red = 255;
     graphics_print_string(glyph_desc, "Unknown command!", row, 0, &color);
 }
 
-void shell(graphics_glyph_description *glyph_desc)
+void shell(graphics_glyph_description *glyph_desc, uint8_t core_count, volatile ap_param *param)
 {
-    static char cmdbuff[1001];
-    static char empty[1000];
+    static char cmdbuff[201];
+    static char empty[200];
     static int cmdndx;
-    memset(empty, ' ', 1000);
+    memset(empty, ' ', 200);
     uint32_t row, col;
     row = 6;
     col = 2;
@@ -295,7 +352,7 @@ void shell(graphics_glyph_description *glyph_desc)
                 graphics_print_string(glyph_desc, buff, row, col, &color);
                 cmdbuff[cmdndx++] = event.ascii;
                 col++;
-                if (col == 1000) 
+                if (col == 200) 
                     col--;
                 graphics_print_string(glyph_desc, cursor, row, col, &color);
             }
@@ -303,7 +360,7 @@ void shell(graphics_glyph_description *glyph_desc)
             {
                 graphics_print_string(glyph_desc, nothing, row, col, &color);
                 cmdbuff[cmdndx] = 0;
-                execmd(glyph_desc, cmdbuff, row + 1);
+                execmd(glyph_desc, cmdbuff, row + 1, core_count, param);
                 cmdndx = 0;
                 row += 2;
                 col = 2;
@@ -345,6 +402,8 @@ int kernel_main(BootInfo *bootInfo)
     simple_allocator_align(data_alloc, 4096);
     void *ap_stacks = simple_allocator_alloc(data_alloc, 32 * PAGING_PAGE_SIZE * 100);
     spinlock *core_locks = simple_allocator_alloc(data_alloc, 32 * sizeof(spinlock));
+    spinlock *done_locks = simple_allocator_alloc(data_alloc, 32 * sizeof(spinlock));
+    ap_param *params = simple_allocator_alloc(data_alloc, 32 * sizeof(ap_param)); 
     memset(core_locks, 0, 32 * sizeof(spinlock));
     memcpy(boot_info, bootInfo, sizeof(BootInfo));
     boot = boot_info;
@@ -354,7 +413,7 @@ int kernel_main(BootInfo *bootInfo)
     
     uint8_t ap_vector, started;
     started = start_cores(boot_info, data_alloc, map, core_ids, 
-        core_count, &ap_vector, apic_addr, ap_stacks, core_locks);
+        core_count, &ap_vector, apic_addr, ap_stacks, core_locks, done_locks, params);
 
     init_cpu_state(map, c_state, ap_vector);
 
@@ -378,7 +437,7 @@ int kernel_main(BootInfo *bootInfo)
     
     keyboard_init(c_state, glyph_desc);
 
-    shell(glyph_desc);
+    shell(glyph_desc, *core_count, params);
     
     kernel_loop();
     return 0;

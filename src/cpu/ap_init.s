@@ -2,14 +2,14 @@
 
 .global __ap_init_begin
 .global __ap_init_end
-.global __ap_ljmp_instr
+.global __ap_init_ljmp_instr
 .global __ap_init_ljmp
 .global __ap_init_gdt
 .global __ap_init_gdtr
-.global __ap_absljmp_instr
-.global __ap_absljmp
-.global __ap_ljmp64_instr
-.global __ap_ljmp64
+.global __ap_init_absljmp_instr
+.global __ap_init_absljmp
+.global __ap_init_ljmp64_instr
+.global __ap_init_ljmp64
 .global __ap_init_protected
 
 .code16
@@ -40,7 +40,7 @@ __ap_init_begin:
     // immediately perform long jump to load the CS with descriptor from our
     // temporary GDT, BSP will edit the machine to jump to the correct, we don't know
     // where this code will be in memory
-__ap_ljmp_instr:
+__ap_init_ljmp_instr:
     ljmp $0x8, $0x0000
 
 .code32
@@ -56,11 +56,11 @@ __ap_init_ljmp:
     mov $0x00CF9A00, %eax
     mov %eax, (__ap_init_gdt_code - __ap_init_begin + 4)
 
-__ap_absljmp_instr:
+__ap_init_absljmp_instr:
     // far jump to load the new code segment
     ljmp $0x8, $0x00000000
 
-__ap_absljmp:
+__ap_init_absljmp:
     // load flat segment selectors for data
     mov $0x18, %ax
     mov %ax, %ds
@@ -105,11 +105,11 @@ __ap_absljmp:
     // starting from here we are in long mode, we start by default in compatiblity mode (32-bit)
     // we do a far jump to a 64-bit code segment descriptor to enter 64-bit mode
     // again the BSP will edit the machine code to put here the correct address
-__ap_ljmp64_instr:
+__ap_init_ljmp64_instr:
     ljmp $0x20, $0x00000000
 
 .code64
-__ap_ljmp64:
+__ap_init_ljmp64:
     // now we are truly in 64-bit mode and we can access 64-bit registers
     // load the stack prepared for us the BSP core.
     mov %rcx, %rax
@@ -125,9 +125,16 @@ __ap_ljmp64:
     add $(ap_param - __ap_init_begin), %rax
     mov (%rax), %rdi
 
+    // signal we are ready to call C code
+    mov %rcx, %rax
+    add $(ap_on - __ap_init_begin), %rax
+    movb $1, (%rax)
+
     // now, we are in 64-bit mode, we have a stack and a function argument
     // we can call a C function
-    mov $ap_main, %rbx
+    mov %rcx, %rax
+    add $(ap_func - __ap_init_begin), %rax
+    mov (%rax), %rbx
     call *%rbx
 
     // we should never this point
@@ -153,14 +160,14 @@ __ap_init_gdtr_base:
 .skip 8
 ap_cr3: // physical address of PML4
     .skip 4
-ap_gdt: // gdt base and limit
-    .skip 10
-ap_idt: // idt base and limit
-    .skip 10
 ap_rsp:
     .skip 8
 ap_vector:
     .skip 4
+ap_func:
+    .skip 8
 ap_param:
     .skip 8
+ap_on:
+    .skip 1
 __ap_init_end:

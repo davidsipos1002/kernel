@@ -12,7 +12,7 @@
 typedef struct
 {
     uint8_t code;
-    uint8_t released;
+    uint8_t event;
     char ascii;
 } ps2_key_event;
 

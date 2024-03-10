@@ -317,7 +317,7 @@ int kernel_main(BootInfo *bootInfo)
     while (1)
     {
         ps2_keyboard_get_key(&event);
-        if (event.released)
+        if (event.event == 1)
         {
             if (event.ascii)
             {

@@ -9,6 +9,7 @@
 #include <interrupt/pic.h>
 #include <memory/manipulate.h>
 #include <ps2/controller.h>
+#include <sync/spinlock.h>
 
 #define KEYMAP_ADDR 0x1F3FF000
 typedef struct
@@ -21,7 +22,7 @@ typedef struct
 static key_map *keymap = (key_map *) KEYMAP_ADDR;
 static uint8_t extended;
 static uint8_t keystat[32];
-static uint8_t event_occured;
+static ALIGN(128) spinlock lock;
 static ps2_key_event curr_event;
 
 void INTERRUPT ps2_keyboard_irq(no_priv_change_frame *stack_frame)
@@ -55,28 +56,31 @@ void INTERRUPT ps2_keyboard_irq(no_priv_change_frame *stack_frame)
         else
             ascii = keymap->ascii[code] & 0xFF;
     
-        event_occured = 1;
         curr_event.code = code;
-        curr_event.released = released;
+        curr_event.event = released;
         curr_event.ascii = ascii;
     }
 
     pic_eoi(1);
+    spinlock_release(&lock);
 }
 
 void ps2_keyboard_init(void *idt, uint8_t irq)
 {
+    memset(&lock, 0, sizeof(spinlock));
+    spinlock_lock(&lock);
+    curr_event.event = 0xFF;
     idt_register_handler(idt, irq, (idt_handler) &ps2_keyboard_irq, 1, 1, 0);
     pic_clear_mask(1);
 }
 
 void ps2_keyboard_get_key(ps2_key_event *event)
 {
-    while (!event_occured);
+    spinlock_lock(&lock);
     cli();
-    event_occured = 0;
     event->code = curr_event.code;
-    event->released = curr_event.released;
+    event->event = curr_event.event;
     event->ascii = curr_event.ascii;
+    curr_event.event = 0xFF;
     sti();
 }
